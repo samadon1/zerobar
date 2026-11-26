@@ -1,0 +1,20 @@
+{
+  "name": "ZeroBar — Off-Grid Crisis Swarm",
+  "short_name": "ZeroBar",
+  "description": "Off-grid peer-to-peer crisis triage mesh powered by Firebase AI Logic Hybrid Inference (Gemini Nano on-device + Cloud Gemini swarm fusion).",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#06090F",
+  "theme_color": "#06090F",
+  "categories": ["utilities", "medical", "navigation"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

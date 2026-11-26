@@ -1,0 +1,147 @@
+rules_version = '2';
+
+// ZeroBar — Database-Layer Privacy Invariant & Mesh Schema Enforcement
+//
+// In addition to Firebase App Check (ReCaptchaV3 on Web, App Attest on iOS)
+// enforced at the Firebase Console layer, these Firestore Security Rules act
+// as a cryptographic-grade backstop for ZeroBar's core architectural guarantee:
+//
+//   1. ZERO RAW PII IN THE CLOUD: Any write containing `rawInputLocalOnly`
+//      (or an unredacted SSN pattern in `payload.sum`) is hard-rejected.
+//   2. STRICT <2KB BEACON BUDGET: Enforces `beaconBytes <= 2048` and tight
+//      field-level length bounds on `CompactBeaconPayload` so P2P relay sync
+//      remains ultra-compact and abuse-resistant.
+//   3. SCHEMA INTEGRITY: Validates all required `CompactBeaconPayload` and
+//      `CloudIncidentBrief` fields across Web Command Center, Mobile PWA,
+//      and native iOS SwiftUI Field Nodes.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidRoomId(roomId) {
+      return roomId is string
+        && roomId.size() >= 3
+        && roomId.size() <= 64
+        && roomId.matches('^[A-Za-z0-9_-]+$');
+    }
+
+    function isValidSeverity(sev) {
+      return sev in ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
+    }
+
+    function isValidCategory(cat) {
+      return cat in [
+        'MEDICAL',
+        'TRAPPED',
+        'INFRASTRUCTURE',
+        'FIRE_HAZARD',
+        'WATER_FOOD',
+        'OTHER'
+      ];
+    }
+
+    function containsNoLeakedPii(text) {
+      // Defense-in-depth RE2 guard against leaked SSNs (XXX-XX-XXXX)
+      return !text.matches('.*[0-9]{3}-[0-9]{2}-[0-9]{4}.*');
+    }
+
+    function isValidCompactPayload(p) {
+      return p is map
+        // Privacy Invariant: rawInputLocalOnly must never appear nested either
+        && !('rawInputLocalOnly' in p)
+        && p.keys().hasAll(['sev', 'cat', 'ppl', 'med', 'haz', 'loc', 'sum', 'ts'])
+        && isValidSeverity(p.sev)
+        && isValidCategory(p.cat)
+        && p.ppl is int && p.ppl >= 0 && p.ppl <= 10000
+        && p.med is list && p.med.size() <= 10
+        && p.haz is list && p.haz.size() <= 10
+        && p.loc is string && p.loc.size() > 0 && p.loc.size() <= 120
+        && p.sum is string && p.sum.size() > 0 && p.sum.size() <= 240
+        && containsNoLeakedPii(p.sum)
+        && p.ts is int && p.ts > 0;
+    }
+
+    function isValidBeaconWrite(data, beaconId) {
+      return data is map
+        // HARD PRIVACY INVARIANT: Raw citizen input must NEVER reach Firestore
+        && !('rawInputLocalOnly' in data)
+        // Required top-level TriageBeacon fields (shared by Web + iOS clients)
+        && data.keys().hasAll([
+          'id',
+          'originNodeId',
+          'originCallsign',
+          'payload',
+          'beaconBytes',
+          'syncedToCloud',
+          'syncedAt'
+        ])
+        && data.id is string && data.id == beaconId && data.id.size() <= 64
+        && data.originNodeId is string && data.originNodeId.size() > 0 && data.originNodeId.size() <= 64
+        && data.originCallsign is string && data.originCallsign.size() > 0 && data.originCallsign.size() <= 48
+        // Enforce <2KB compact beacon payload budget
+        && data.beaconBytes is int && data.beaconBytes > 0 && data.beaconBytes <= 2048
+        && data.syncedToCloud is bool
+        && data.syncedAt is int && data.syncedAt > 0
+        // Validate CompactBeaconPayload structure & field size caps
+        && isValidCompactPayload(data.payload)
+        // Optional fields bounds (when provided by Web or iOS clients)
+        && (!('piiRedactedTypes' in data) || (data.piiRedactedTypes is list && data.piiRedactedTypes.size() <= 16))
+        && (!('hops' in data) || (data.hops is list && data.hops.size() <= 32))
+        && (!('localSurvivalSteps' in data) || (data.localSurvivalSteps is list && data.localSurvivalSteps.size() <= 6))
+        && (!('rawBytes' in data) || (data.rawBytes is int && data.rawBytes >= 0 && data.rawBytes <= 65536));
+    }
+
+    function isValidBriefWrite(data, briefId) {
+      return data is map
+        && !('rawInputLocalOnly' in data)
+        && data.keys().hasAll([
+          'id',
+          'generatedAt',
+          'beaconsFusedCount',
+          'executiveSummary',
+          'incidents',
+          'directives',
+          'telemetry'
+        ])
+        && data.id is string && data.id == briefId && data.id.size() <= 64
+        && data.generatedAt is int && data.generatedAt > 0
+        && data.beaconsFusedCount is int && data.beaconsFusedCount >= 0 && data.beaconsFusedCount <= 500
+        && data.executiveSummary is string && data.executiveSummary.size() > 0 && data.executiveSummary.size() <= 2000
+        && data.incidents is list && data.incidents.size() <= 50
+        && data.directives is list && data.directives.size() <= 100
+        && data.telemetry is map;
+    }
+
+    match /rooms/{roomId} {
+      // Triage Beacons synced opportunistically by Relay Mules
+      match /beacons/{beaconId} {
+        allow read: if isValidRoomId(roomId);
+        allow create, update: if isValidRoomId(roomId)
+          && isValidBeaconWrite(request.resource.data, beaconId);
+        allow delete: if false;
+      }
+
+      // Cloud Incident Briefs & <1KB Tactical Directives pushed back into the mesh
+      match /briefs/{briefId} {
+        allow read: if isValidRoomId(roomId);
+        allow create, update: if isValidRoomId(roomId)
+          && isValidBriefWrite(request.resource.data, briefId);
+        allow delete: if false;
+      }
+
+      // Ephemeral WebRTC SDP/ICE signaling rendezvous for P2P DataChannel pairing
+      match /rtcSignals/{signalId} {
+        allow read: if isValidRoomId(roomId);
+        allow create: if isValidRoomId(roomId)
+          && !('rawInputLocalOnly' in request.resource.data)
+          && request.resource.data.keys().hasAll(['fromPeerId', 'type', 'ts']);
+        allow update, delete: if false;
+      }
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

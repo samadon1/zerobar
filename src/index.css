@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --zb-canvas: #0D1013;
+    --zb-surface: #141619;
+    --zb-hairline: rgba(255, 255, 255, 0.07);
+    --zb-lime: #B7E852;
+    --zb-coral: #E85D4A;
+    --zb-amber: #F2B84B;
+    --zb-text: #F3F4F6;
+    --zb-muted: #8A919E;
+  }
+
+  html,
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', sans-serif;
+    background-color: #0D1013;
+    color: #F3F4F6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  ::selection {
+    background-color: rgba(183, 232, 82, 0.24);
+    color: #F3F4F6;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fk-glass {
+    background-color: rgba(20, 22, 25, 0.86);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+
+  .zb-surface {
+    background-color: #141619;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .zb-hairline {
+    border-color: rgba(255, 255, 255, 0.07);
+  }
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+/* Subtle matte dark scrollbar inside floating glass cards */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Smooth spatial radar & signal animations */
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.65;
+  }
+  70% {
+    opacity: 0.18;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+.animate-radar {
+  animation: radar-pulse 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes packet-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgba(183, 232, 82, 0.85));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(183, 232, 82, 0.95));
+  }
+}
+
+.packet-glow {
+  animation: packet-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes mesh-flow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.mesh-link-flow {
+  animation: mesh-flow 1.6s linear infinite;
+}
+
+@keyframes reticle-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-reticle {
+  animation: reticle-breathe 2.2s ease-in-out infinite;
+}
