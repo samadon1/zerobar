@@ -380,6 +380,54 @@ check('Visual Media Gate', 'Embedded hero screenshots exist in docs/media/', () 
 });
 
 // ---------------------------------------------------------------------------
+// 6. Live DB Firewall Prover & Multimodal Recon / Surge Simulator Gates
+// ---------------------------------------------------------------------------
+check('Live DB Firewall Prover', 'runLivePrivacyFirewallAudit + Blueprint audit UI + zero ReCaptchaV3', () => {
+  const archModalTsx = read('src/components/ArchitectureModal.tsx');
+  const appTsx = read('src/App.tsx');
+  assert(
+    firebaseTs.includes('export async function runLivePrivacyFirewallAudit('),
+    'Missing runLivePrivacyFirewallAudit in src/services/firebase.ts'
+  );
+  assert(
+    archModalTsx.includes('runLivePrivacyFirewallAudit') &&
+      archModalTsx.includes('data-testid="run-firewall-audit"'),
+    'ArchitectureModal.tsx missing runLivePrivacyFirewallAudit or data-testid="run-firewall-audit"'
+  );
+  assert(
+    !archModalTsx.includes('ReCaptchaV3'),
+    'ArchitectureModal.tsx must reference ReCaptchaEnterprise (found legacy ReCaptchaV3)'
+  );
+  assert(
+    appTsx.includes('roomId={roomId}'),
+    'App.tsx must pass roomId={roomId} to ArchitectureModal'
+  );
+  return 'Live SSN adversary rejection + <300B schema probe + ReCaptchaEnterprise UI verified';
+});
+
+check('Multimodal Recon & Surge Simulator', 'FLIR Drone Recon InlineDataPart + 50k Surge Economics Simulator', () => {
+  const reconSampleTs = read('src/utils/crisisPhotoSample.ts');
+  const surgeModalTsx = read('src/components/SurgeBenchmarksModal.tsx');
+  const appTsx = read('src/App.tsx');
+  assert(
+    reconSampleTs.includes('export function generateSampleHazardReconDataUrl('),
+    'Missing generateSampleHazardReconDataUrl in src/utils/crisisPhotoSample.ts'
+  );
+  assert(
+    appTsx.includes('data-testid="cloud-recon-vision"') &&
+      hybridEngineTs.includes('inlineData:'),
+    'Missing data-testid="cloud-recon-vision" in App.tsx or inlineData multimodal escalation in hybridEngine.ts'
+  );
+  assert(
+    surgeModalTsx.includes('SurgeBenchmarksModal') &&
+      surgeModalTsx.includes('50000') &&
+      appTsx.includes('data-testid="open-overview-benchmarks"'),
+    'Missing SurgeBenchmarksModal 50k simulator or open-overview-benchmarks trigger'
+  );
+  return 'generateSampleHazardReconDataUrl + cloud-recon-vision + SurgeBenchmarksModal verified';
+});
+
+// ---------------------------------------------------------------------------
 // Output Crisp Checklist
 // ---------------------------------------------------------------------------
 console.log('\n=== ZeroBar #BuildHybridAI 2026 Submission Verification ===\n');

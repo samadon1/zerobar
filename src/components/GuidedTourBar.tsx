@@ -20,7 +20,7 @@ export const STORY_TOUR_CHAPTERS: readonly TourChapterMeta[] = [
     title: 'On-Device PII Vault & Offline Survival Triage',
     modeBadge: 'ONLY_ON_DEVICE',
     caption:
-      'Firebase AI Logic runs strictly ONLY_ON_DEVICE in local RAM—striking out names, SSNs, and street addresses before any packet touches the radio mesh.',
+      'Firebase AI Logic runs strictly ONLY_ON_DEVICE in local RAM, striking out names, SSNs, and street addresses before any packet touches the radio mesh.',
     voiceScript:
       'Chapter 1: On-Device Privacy Vault. Firebase AI Logic runs strictly ONLY ON DEVICE to scrub names, social security numbers, and street addresses in RAM before any radio hop.',
     durationMs: 8000,
@@ -53,7 +53,7 @@ export const STORY_TOUR_CHAPTERS: readonly TourChapterMeta[] = [
     title: 'Dual-iPhone Field SOS Radar & 12-Tile Crisis Grid',
     modeBadge: 'ONLY_ON_DEVICE',
     caption:
-      'Citizens pair via QR or offline PWA, iOS, and Android field nodes—scanning 0-bar mesh peers on live radar while ONLY_ON_DEVICE guards 12 SOS tiles.',
+      'Citizens pair via QR or offline PWA, iOS, and Android field nodes, scanning 0-bar mesh peers on live radar while ONLY_ON_DEVICE guards 12 SOS tiles.',
     voiceScript:
       'Chapter 4: Field SOS Node. Citizens pair over QR or native iOS and Android field nodes, scanning nearby mesh peers on zero-bar radar with one-tap offline triage.',
     durationMs: 9000,
@@ -135,7 +135,7 @@ export const GuidedTourBar: React.FC<GuidedTourBarProps> = ({
     };
   }, [tourStep, chapterStartedAt]);
 
-  // Optional Web Speech API narration — strictly opt-in (silent by default)
+  // Optional Web Speech API narration - strictly opt-in (silent by default)
   useEffect(() => {
     if (
       typeof window === 'undefined' ||

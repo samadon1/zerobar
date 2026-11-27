@@ -23,17 +23,17 @@
 | On-Device PII Redaction Vault (`ONLY_ON_DEVICE`) | Dual-Mode Field SOS (`0-Bar Offline` Radar & Alert Grid) |
 | :---: | :---: |
 | <img src="./docs/media/pii-vault.png" alt="ZeroBar PII Vault Redaction Proof: struck-through names, SSNs, and street addresses stripped strictly on-device before sub-400B JSON beacon creation" width="100%" /> | <img src="./docs/media/field-sos.png" alt="ZeroBar Dual-iPhone Field SOS: Marin Sector 4 offline voice radar and 12-tile emergency alert composer" width="100%" /> |
-| Names, SSNs, phone numbers, and street numbers are struck through locally in RAM (`304B beacon · 3 PII scrubbed`). `rawInputLocalOnly` mathematically never leaves the origin device. | Tactile 0-Bar voice radar + 12-tile crisis composer (`Trapped`, `Gas Leak`, `Insulin`) delivering instant ~150ms offline first-aid steps and `<400B` P2P beacons. |
+| Names, SSNs, phone numbers, and street numbers are struck through locally in RAM (`277B beacon · 3 PII scrubbed`, `262B avg`). `rawInputLocalOnly` mathematically never leaves the origin device. | Tactile 0-Bar voice radar + 12-tile crisis composer (`Trapped`, `Gas Leak`, `Insulin`) delivering instant ~150ms offline first-aid steps and `<400B` P2P beacons. |
 
 ---
 
 ## 60-Second Judge Verification Guide
 
-1. **Launch the Live Spatial Command Center (15s):** Open [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app) and click **`Story Tour`** (or **`Simulate 7.2 Quake`**). Watch `ALPHA`, `BRAVO`, and `CHARLIE` scrub PII locally (`ON_DEVICE`), hop `<400B` beacons via `RELAY-01 MULE` across the Golden Gate Uplink Ridge, fuse inside **Cloud Copilot** (`IN_CLOUD`, resolving the Harbor Bridge North vs. Pine St South contradiction), and deliver `<100B` ACKs back into the blackout zone.
-2. **Verify the `PII Vault` Redaction Proof (10s):** Click the **`PII Vault`** tab in the left *Triage Queue* panel to inspect struck-through names, SSNs, and street addresses paired directly with the `<400B` JSON packet, then check [`firestore.rules`](./firestore.rules) (hard-rejects `rawInputLocalOnly`, SSN patterns, and payloads `> 2048B`).
-3. **Test the Field SOS View & Offline Mode (15s):** Click **`Field SOS`** in the top bar (or open [the Mobile Field URL](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01) on your phone via **`Pair QR`**). Toggle **`0-BAR OFFLINE`**, broadcast a voice/text/photo SOS, and verify instant offline survival steps + P2P/Firestore sync.
-4. **Inspect the `Blueprint` Architecture Modal (10s):** Click **`Blueprint`** in the top bar to review the 3-tier `InferenceMode` pipeline (`ONLY_ON_DEVICE`, `PREFER_ON_DEVICE`, `ONLY_IN_CLOUD`), live `inferenceSource` latency/byte telemetry, and security boundaries.
-5. **Verify All 3 Official `#BuildHybridAI` Platforms in One Repo (10s):**
+1. **Launch the Live Spatial Command Center & FLIR Recon Vision (15s):** Open [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app) and click **`Story Tour`** (or **`Simulate 7.2 Quake`**), then click **`Recon Vision`** inside **Cloud Copilot** to attach a tactical FLIR drone hazard frame (`InlineDataPart`) to `CITIZEN-CHARLIE` and fuse multi-node beacons via `InferenceMode.ONLY_IN_CLOUD` (resolving the Harbor Bridge North vs. Pine St South contradiction into `<100B` ACKs).
+2. **Verify the `PII Vault` Redaction Proof (10s):** Click the **`PII Vault`** tab in the left *Triage Queue* panel to inspect struck-through names, SSNs, and street addresses paired directly with the `<270B` clinical JSON packet, backed by [`firestore.rules`](./firestore.rules) (hard-rejects `rawInputLocalOnly`, SSN patterns, and payloads `> 2048B`).
+3. **Run the 1-Click Live Firestore Zero-PII Penetration Test (10s):** Click **`Blueprint -> Test Live DB Firewall`** to fire an unredacted adversary SSN write (`BLOCKED · PERMISSION_DENIED`) alongside a sanitized `<300B` `CompactBeaconPayload` probe (`ACCEPTED · 200 OK`) directly against deployed Firestore rules.
+4. **Model 50,000-Citizen Disaster Surge Economics (10s):** Click **`Overview`** in the top bar and drag the interactive surge slider up to `50,000` blackout citizens to inspect `$0` local NPU triage turns (`2.5M`), `99.0%` cloud API quota reduction via 20:1 Relay Mule batching, `98.4%` mesh bandwidth saved (`885.5 MB`), and `0 Bytes` raw PII egress.
+5. **Test Field SOS & All 3 Official `#BuildHybridAI` Platforms (15s):** Click **`Field SOS`** in the top bar (or open [the Mobile Field URL](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01) via **`Pair QR`**) to test offline radar + 12-tile SOS broadcast, and inspect all 3 native/web implementations in one repo:
    - **Web / Chrome (`src/`):** [`src/services/firebase.ts`](./src/services/firebase.ts) + [`src/services/hybridEngine.ts`](./src/services/hybridEngine.ts) + [`src/components/SwarmMapCanvas.tsx`](./src/components/SwarmMapCanvas.tsx) (React 19, MapLibre GL, Chrome Gemini Nano, WebRTC P2P).
    - **iOS (`ios/ZeroBarField/`):** [`HybridAIEngine.swift`](./ios/ZeroBarField/Services/HybridAIEngine.swift) + [`MeshModels.swift`](./ios/ZeroBarField/Models/MeshModels.swift) (SwiftUI, Apple Foundation Models, `AppAttest`).
    - **Android (`android/ZeroBarField/`):** [`HybridAIEngine.kt`](./android/ZeroBarField/app/src/main/java/app/zerobar/field/services/HybridAIEngine.kt) + [`MeshModels.kt`](./android/ZeroBarField/app/src/main/java/app/zerobar/field/models/MeshModels.kt) (Jetpack Compose, Kotlin, AICore Gemini Nano, `PlayIntegrity`).
@@ -88,11 +88,11 @@ cp .env.example .env
 npm run dev
 ```
 
-### Run the Automated 12-Gate Submission Verifier
+### Run the Automated 14-Gate Submission Verifier
 ```bash
 node scripts/verify-submission.mjs
 ```
-Validates `firebase/ai` `InferenceMode` tiers, Web/iOS/Android App Check providers, zero leaked API keys, `firestore.rules` privacy invariants across TypeScript + Swift + Kotlin, and native syntax gates.
+Validates `firebase/ai` `InferenceMode` tiers, Web/iOS/Android App Check providers (`ReCaptchaEnterprise`, `AppAttest`, `PlayIntegrity`), zero leaked API keys, `firestore.rules` privacy invariants across TypeScript + Swift + Kotlin, live Firestore zero-PII firewall audit (`14/14 PASS`), multimodal FLIR `InlineDataPart` escalation, 50k surge economics simulator, and native syntax gates.
 
 ### Enabling Real On-Device Gemini Nano in Chrome
 1. Open Chrome (v138+ Desktop) and visit `chrome://flags`.

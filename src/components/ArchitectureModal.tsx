@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   X,
   ShieldCheck,
+  ShieldAlert,
+  CheckCircle2,
   ArrowRight,
   Lock,
   Radio,
@@ -9,7 +11,12 @@ import {
   Cpu,
   Globe,
   WifiOff,
+  Loader2,
 } from 'lucide-react';
+import {
+  runLivePrivacyFirewallAudit,
+  type FirewallAuditResult,
+} from '../services/firebase';
 import type { DeviceCapabilityStatus } from '../services/hybridEngine';
 import type { WebRTCTransportStatus } from '../services/webrtcMesh';
 
@@ -19,6 +26,20 @@ export interface ArchitectureModalProps {
   capabilities: DeviceCapabilityStatus | null;
   rtcStatus: WebRTCTransportStatus;
   swRegistered: boolean;
+  roomId?: string;
+}
+
+function resolveActiveRoomId(propRoomId?: string): string {
+  if (propRoomId && /^[A-Za-z0-9_-]{3,64}$/.test(propRoomId)) {
+    return propRoomId;
+  }
+  if (typeof window !== 'undefined') {
+    const param = new URLSearchParams(window.location.search).get('room');
+    if (param && /^[A-Za-z0-9_-]{3,64}$/.test(param)) {
+      return param;
+    }
+  }
+  return 'CASCADIA-01';
 }
 
 export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
@@ -27,7 +48,13 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
   capabilities,
   rtcStatus,
   swRegistered,
+  roomId,
 }) => {
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditResult, setAuditResult] = useState<FirewallAuditResult | null>(
+    null
+  );
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -37,9 +64,27 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  const handleRunFirewallAudit = useCallback(async () => {
+    if (auditRunning) return;
+    setAuditRunning(true);
+    try {
+      const targetRoom = resolveActiveRoomId(roomId);
+      const res = await runLivePrivacyFirewallAudit(targetRoom);
+      setAuditResult(res);
+    } finally {
+      setAuditRunning(false);
+    }
+  }, [auditRunning, roomId]);
+
   if (!open) return null;
 
   const cloudModel = capabilities?.cloudModel || 'gemini-2.5-flash';
+  const edgeAiLabel =
+    capabilities?.chromeBuiltInAI === 'AVAILABLE'
+      ? 'Chrome Nano HW Ready'
+      : capabilities?.chromeBuiltInAI === 'DOWNLOADABLE'
+      ? 'Local Vault Active (Nano Downloadable)'
+      : 'Local Vault Active (Nano Flag Optional)';
 
   return (
     <div
@@ -85,7 +130,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
           {/* 3-Step Horizontal Pipeline */}
           <div>
             <div className="text-[13px] font-medium text-[#D1D5DB] mb-3">
-              Hybrid Inference Pipeline — Blackout Zone to Uplink Ridge
+              Hybrid Inference Pipeline · Blackout Zone to Uplink Ridge
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-2.5">
@@ -137,7 +182,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px]">
                   <span className="text-[#8A919E]">RTCDataChannel</span>
                   <span className="text-[#F2B84B] font-medium tabular-nums">
-                    &lt;400 B Beacon
+                    &lt;300 B Beacon
                   </span>
                 </div>
               </div>
@@ -175,23 +220,124 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
             </div>
           </div>
 
-          {/* App Check + Firestore Privacy Invariant Bar */}
-          <div className="rounded-2xl bg-[#B7E852]/[0.06] border border-[#B7E852]/20 px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start sm:items-center gap-3 min-w-0">
-              <div className="w-2 h-2 rounded-full bg-[#B7E852] shrink-0 mt-1.5 sm:mt-0" />
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium text-[#F3F4F6]">
-                  App Check + Firestore Privacy Invariant
+          {/* App Check + Firestore Privacy Invariant + Live Firewall Verification */}
+          <div className="rounded-2xl bg-[#B7E852]/[0.06] border border-[#B7E852]/20 p-4 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-[#B7E852] shrink-0 mt-1.5 sm:mt-0" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium text-[#F3F4F6]">
+                      App Check + Firestore Privacy Invariant
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-[#B7E852]/15 border border-[#B7E852]/30 text-[10.5px] font-medium text-[#B7E852]">
+                      Zero Raw PII
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-[#8A919E] mt-0.5 leading-relaxed">
+                    <code className="text-[#D1D5DB]">rawInputLocalOnly</code> is never serialized to network or Firestore.{' '}
+                    <code className="text-[#D1D5DB]">rooms/&#123;roomId&#125;/beacons</code> enforces schema-validated, PII-free payloads gated by ReCaptchaEnterprise, App Attest &amp; Play Integrity.
+                  </p>
                 </div>
-                <p className="text-[12px] text-[#8A919E] mt-0.5 leading-relaxed">
-                  <code className="text-[#D1D5DB]">rawInputLocalOnly</code> is never serialized to network or Firestore.{' '}
-                  <code className="text-[#D1D5DB]">rooms/&#123;roomId&#125;/beacons</code> enforces schema-validated, PII-free payloads gated by ReCaptchaV3, App Attest &amp; Play Integrity.
-                </p>
               </div>
+
+              <button
+                type="button"
+                data-testid="run-firewall-audit"
+                onClick={() => void handleRunFirewallAudit()}
+                disabled={auditRunning}
+                className="shrink-0 self-start sm:self-center h-9 px-3.5 rounded-xl bg-[#B7E852] hover:bg-[#c5f069] disabled:opacity-70 text-[#0D1013] text-[12px] font-semibold inline-flex items-center gap-1.5 shadow-[0_0_20px_rgba(183,232,82,0.22)] transition cursor-pointer whitespace-nowrap"
+              >
+                {auditRunning ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Probing Rules...</span>
+                  </>
+                ) : (
+                  <span>⚡ Test Live DB Firewall</span>
+                )}
+              </button>
             </div>
-            <span className="shrink-0 self-start sm:self-center px-2.5 py-1 rounded-lg bg-[#B7E852]/15 border border-[#B7E852]/30 text-[11px] font-medium text-[#B7E852]">
-              Zero Raw PII
-            </span>
+
+            {/* Live Zero-PII Security Rules Verification Subpanel */}
+            <div className="pt-3 border-t border-[#B7E852]/15 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#D1D5DB]">
+                  Live Zero-PII Security Rules Verification
+                </span>
+                {auditResult ? (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-black/35 border border-white/[0.08] font-mono text-[10.5px] text-[#B7E852]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#B7E852]" />
+                    <span>{auditResult.mode}</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-[#8A919E]">
+                    Click to fire real adversary SSN write vs sanitized beacon write against deployed rules
+                  </span>
+                )}
+              </div>
+
+              {auditResult && (
+                <div
+                  data-testid="firewall-audit-results"
+                  className="grid grid-cols-1 md:grid-cols-2 gap-2.5"
+                >
+                  {/* Adversary Attack Card */}
+                  <div className="rounded-xl bg-[#0E1013]/85 border border-[#E85D4A]/35 p-3 flex flex-col justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-[#F3F4F6]">
+                        <ShieldAlert className="w-4 h-4 text-[#E85D4A] shrink-0" />
+                        <span>
+                          Adversary Raw SSN +{' '}
+                          <code className="text-[#F5A396] font-mono text-[11px]">
+                            rawInputLocalOnly
+                          </code>{' '}
+                          Write
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#E85D4A]/18 border border-[#E85D4A]/40 font-mono text-[10.5px] font-semibold text-[#F5A396]">
+                        {auditResult.attackBlocked
+                          ? `BLOCKED · ${auditResult.attackErrorCode}`
+                          : `UNBLOCKED · ${auditResult.attackErrorCode}`}
+                      </span>
+                      <span className="font-mono text-[11px] text-[#8A919E] tabular-nums">
+                        {auditResult.attackLatencyMs} ms
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Valid Sanitized Beacon Card */}
+                  <div className="rounded-xl bg-[#0E1013]/85 border border-[#B7E852]/35 p-3 flex flex-col justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-[#F3F4F6]">
+                        <CheckCircle2 className="w-4 h-4 text-[#B7E852] shrink-0" />
+                        <span>
+                          Redacted &lt;300B{' '}
+                          <code className="text-[#D9F59B] font-mono text-[11px]">
+                            CompactBeaconPayload
+                          </code>{' '}
+                          Write
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#B7E852]/16 border border-[#B7E852]/40 font-mono text-[10.5px] font-semibold text-[#B7E852]">
+                        {auditResult.validAccepted
+                          ? 'ACCEPTED · 200 OK'
+                          : 'REJECTED'}
+                      </span>
+                      <span className="font-mono text-[11px] text-[#D1D5DB] tabular-nums">
+                        {auditResult.validBytes} B · {auditResult.validLatencyMs} ms
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Multi-Platform Matrix */}
@@ -216,7 +362,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                   </p>
                 </div>
                 <div className="pt-2 border-t border-white/[0.05] text-[10.5px] font-mono text-[#6B7280]">
-                  src/ · ReCaptchaV3
+                  src/ · ReCaptchaEnterprise
                 </div>
               </div>
 
@@ -280,9 +426,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 }`}
               />
               <span>Edge AI:</span>
-              <span className="text-[#F3F4F6] font-medium">
-                {capabilities?.chromeBuiltInAI ?? 'Probing'}
-              </span>
+              <span className="text-[#F3F4F6] font-medium">{edgeAiLabel}</span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">

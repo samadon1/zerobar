@@ -55,6 +55,11 @@ import { SwarmMapCanvas, UPLINK_ZONE_X } from './components/SwarmMapCanvas';
 import { InferenceBadge, TelemetryStrip } from './components/TelemetryStrip';
 import { MobileFieldView } from './components/MobileFieldView';
 import { ArchitectureModal } from './components/ArchitectureModal';
+import { SurgeBenchmarksModal } from './components/SurgeBenchmarksModal';
+import {
+  estimateDataUrlBytes,
+  generateSampleHazardReconDataUrl,
+} from './utils/crisisPhotoSample';
 import {
   GuidedTourBar,
   STORY_TOUR_CHAPTERS,
@@ -105,7 +110,8 @@ function formatBeaconHeadline(b: TriageBeacon): {
   subtitle: string;
 } {
   const cleanSector = b.payload.loc
-    .replace(/^Sector\s*\d+\s*[—-]\s*/i, '')
+    .replace(/^Sector\s*\d+\s*[\u2014-]\s*/i, '')
+    .replace(/\u2014/g, '·')
     .replace(/\bSt\s+Overpass\b/i, 'Overpass')
     .replace(/\bBridge\s+(?:North|South)\b/i, 'Bridge')
     .trim();
@@ -125,10 +131,10 @@ function formatBeaconHeadline(b: TriageBeacon): {
   const tagSummary =
     tags.length > 0
       ? tags.slice(0, 2).join(' + ')
-      : b.payload.sum.slice(0, 28);
+      : b.payload.sum.replace(/\u2014/g, '·').slice(0, 28);
 
   return {
-    title: `${shortCall} · ${cleanSector || b.payload.loc}`,
+    title: `${shortCall} · ${cleanSector || b.payload.loc.replace(/\u2014/g, '·')}`,
     subtitle: `${tagSummary} · ${b.beaconBytes}B`,
   };
 }
@@ -188,6 +194,7 @@ export default function App() {
   const [showComposer, setShowComposer] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showArchModal, setShowArchModal] = useState(false);
+  const [showBenchmarksModal, setShowBenchmarksModal] = useState(false);
   const [swRegistered, setSwRegistered] = useState(false);
 
   const [rtcStatus, setRtcStatus] = useState<WebRTCTransportStatus>({
@@ -726,6 +733,99 @@ export default function App() {
     }
   };
 
+  const activeReconBeacon = useMemo(
+    () =>
+      beacons.find(
+        (b) =>
+          Boolean(b.photoDataUrl) &&
+          (b.originNodeId === 'node-charlie' ||
+            b.originCallsign === 'CITIZEN-CHARLIE')
+      ) || beacons.find((b) => Boolean(b.photoDataUrl)),
+    [beacons]
+  );
+
+  const handleTriggerCloudReconVision = async () => {
+    if (isRunningCloud) return;
+    const reconUrl = generateSampleHazardReconDataUrl();
+    if (!reconUrl) return;
+
+    let currentList = beaconsRef.current;
+
+    if (currentList.length === 0) {
+      const charlieNode =
+        nodesRef.current.find((n) => n.id === 'node-charlie') ||
+        INITIAL_MESH_NODES.find((n) => n.id === 'node-charlie') ||
+        INITIAL_MESH_NODES[0];
+      const bridgePreset =
+        CRISIS_PRESETS.find((p) => p.nodeId === 'node-charlie') ||
+        CRISIS_PRESETS[0];
+      const { beacon, telemetryEvents } = await processCitizenDistress(
+        charlieNode,
+        bridgePreset.rawText,
+        reconUrl
+      );
+      const syncedCharlie: TriageBeacon = {
+        ...beacon,
+        photoDataUrl: reconUrl,
+        syncedToCloud: true,
+        syncedAt: Date.now(),
+        hops: ['node-charlie', 'node-relay', 'node-cmd'],
+      };
+      beaconsRef.current = [syncedCharlie];
+      setBeacons([syncedCharlie]);
+      setTelemetry((prev) => [...telemetryEvents.reverse(), ...prev]);
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === charlieNode.id ||
+          n.role === 'RELAY_MULE' ||
+          n.role === 'COMMAND_GATEWAY'
+            ? {
+                ...n,
+                beaconsHeld: Array.from(
+                  new Set([...n.beaconsHeld, syncedCharlie.id])
+                ),
+              }
+            : n
+        )
+      );
+      setSelectedNodeId('node-charlie');
+      syncBeaconToFirestore(roomId, syncedCharlie).catch(() => {});
+      await handleRunCloudCommander([syncedCharlie]);
+      return;
+    }
+
+    const charlieCandidate =
+      currentList.find(
+        (b) =>
+          b.originNodeId === 'node-charlie' ||
+          b.originCallsign === 'CITIZEN-CHARLIE'
+      ) || currentList[0];
+
+    const updatedList = currentList.map((b) => {
+      if (b.id !== charlieCandidate.id) return b;
+      const updatedBeacon: TriageBeacon = {
+        ...b,
+        photoDataUrl: b.photoDataUrl || reconUrl,
+        syncedToCloud: true,
+        syncedAt: b.syncedAt || Date.now(),
+        hops: b.hops.includes('node-cmd')
+          ? b.hops
+          : [...b.hops, 'node-relay', 'node-cmd'],
+      };
+      syncBeaconToFirestore(roomId, updatedBeacon).catch(() => {});
+      return updatedBeacon;
+    });
+
+    beaconsRef.current = updatedList;
+    setBeacons(updatedList);
+    setSelectedNodeId(charlieCandidate.originNodeId);
+
+    const fusionTargets = updatedList.filter((b) => b.syncedToCloud);
+    await handleRunCloudCommander(
+      fusionTargets.length > 0 ? fusionTargets : updatedList
+    );
+  };
+
   const endStoryTour = useCallback(
     (options?: { keepMobileMode?: boolean }) => {
       tourRunIdRef.current += 1;
@@ -797,6 +897,7 @@ export default function App() {
       setIsPatrolling(false);
       setShowComposer(false);
       setShowArchModal(false);
+      setShowBenchmarksModal(false);
       setShowQrModal(false);
 
       const chapterMeta = STORY_TOUR_CHAPTERS[step];
@@ -1230,12 +1331,13 @@ export default function App() {
           >
             <button
               type="button"
+              data-testid="open-overview-benchmarks"
               onClick={() => {
-                setQueueTab('all');
                 setShowComposer(false);
+                setShowBenchmarksModal((v) => !v);
               }}
               className={`px-3 py-1.5 rounded-xl text-[13px] flex items-center gap-2 transition cursor-pointer ${
-                queueTab === 'vault'
+                showBenchmarksModal
                   ? 'bg-white/[0.09] text-white font-medium'
                   : 'text-[#8A919E] hover:text-[#F3F4F6] hover:bg-white/[0.04]'
               }`}
@@ -1366,7 +1468,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* LAYER 2: Floating Left Sidebar — "Swarm Overview" + Bottom "Active Mesh" Card */}
+      {/* LAYER 2: Floating Left Sidebar · "Swarm Overview" + Bottom "Active Mesh" Card */}
       <aside
         aria-label="Swarm Overview"
         className="absolute left-4 top-[70px] bottom-4 w-[352px] max-w-[calc(100vw-32px)] z-20 flex flex-col gap-3 pointer-events-none"
@@ -1459,16 +1561,16 @@ export default function App() {
                 className="w-full rounded-xl bg-black/35 border border-white/[0.07] px-3 py-2 text-[12px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#B7E852]/50 resize-none leading-relaxed"
               />
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
                 <label
-                  className={`cursor-pointer h-8 px-2.5 rounded-xl border text-[11px] font-medium inline-flex items-center gap-1.5 transition ${
+                  className={`cursor-pointer h-8 px-2.5 rounded-xl border text-[11px] font-medium inline-flex items-center gap-1.5 transition shrink-0 ${
                     photoDataUrl
                       ? 'bg-[#B7E852]/15 border-[#B7E852]/35 text-[#B7E852]'
                       : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.07] text-[#D1D5DB]'
                   }`}
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>{photoDataUrl ? 'Photo Attached' : 'Attach Photo'}</span>
+                  <span>{photoDataUrl ? 'Photo Ready' : 'Upload'}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -1486,20 +1588,60 @@ export default function App() {
 
                 <button
                   type="button"
+                  data-testid="attach-sample-recon"
                   onClick={() => {
-                    const originId =
-                      selectedNode.role === 'CITIZEN_OFFLINE'
-                        ? selectedNode.id
-                        : citizenNodes[0]?.id || 'node-alpha';
-                    void handleEmitBeacon(originId, distressInput, photoDataUrl);
+                    const sampleUrl = generateSampleHazardReconDataUrl();
+                    if (sampleUrl) {
+                      setPhotoDataUrl(sampleUrl);
+                    }
                   }}
-                  disabled={isProcessingEdge || !distressInput.trim()}
-                  className="h-8 px-3.5 rounded-xl bg-[#B7E852] hover:bg-[#c5f069] disabled:opacity-40 text-[#0D1013] text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                  className="flex-1 h-8 px-2.5 rounded-xl bg-[#F2B84B]/14 hover:bg-[#F2B84B]/24 border border-[#F2B84B]/38 text-[#F2B84B] text-[11px] font-medium inline-flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
                 >
-                  <Send className="w-3 h-3" />
-                  <span>{isProcessingEdge ? 'Scrubbing…' : 'Emit Beacon'}</span>
+                  <span>⚡ Attach Drone Hazard Recon</span>
                 </button>
               </div>
+
+              {photoDataUrl && (
+                <div className="rounded-xl bg-black/40 border border-[#B7E852]/30 p-2 flex items-center gap-2.5">
+                  <img
+                    src={photoDataUrl}
+                    alt="Attached hazard recon preview"
+                    className="w-16 h-10 rounded-lg object-cover border border-white/12 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-mono font-medium text-[#B7E852] leading-tight">
+                      Multimodal InlineDataPart Ready · ONLY_IN_CLOUD
+                    </div>
+                    <div className="text-[10.5px] text-[#8A919E] truncate mt-0.5 tabular-nums">
+                      ~{Math.max(1, Math.round(estimateDataUrlBytes(photoDataUrl) / 1024))} KB image/jpeg · Sector 2 FLIR
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoDataUrl(undefined)}
+                    aria-label="Remove attached hazard photo"
+                    className="p-1 rounded-lg text-[#8A919E] hover:text-[#F3F4F6] hover:bg-white/[0.08] cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const originId =
+                    selectedNode.role === 'CITIZEN_OFFLINE'
+                      ? selectedNode.id
+                      : citizenNodes[0]?.id || 'node-alpha';
+                  void handleEmitBeacon(originId, distressInput, photoDataUrl);
+                }}
+                disabled={isProcessingEdge || !distressInput.trim()}
+                className="w-full h-8 px-3.5 rounded-xl bg-[#B7E852] hover:bg-[#c5f069] disabled:opacity-40 text-[#0D1013] text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Send className="w-3 h-3" />
+                <span>{isProcessingEdge ? 'Scrubbing…' : 'Emit Beacon'}</span>
+              </button>
             </div>
           )}
 
@@ -1791,7 +1933,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Bottom Frosted Mini-Card — "Active Mesh" Spline Card (Matches Flatkey "Active fleet 120") */}
+        {/* Bottom Frosted Mini-Card · "Active Mesh" Spline Card (Matches Flatkey "Active fleet 120") */}
         <div className="pointer-events-auto h-[136px] shrink-0 bg-[#141619]/86 backdrop-blur-2xl border border-white/[0.07] rounded-[22px] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col justify-between overflow-hidden">
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[12px] text-[#D1D5DB] font-medium">
@@ -1863,21 +2005,21 @@ export default function App() {
         </div>
       </aside>
 
-      {/* LAYER 3: Floating Right Cards — "✦ Cloud Copilot" + "Relay Corridors" */}
+      {/* LAYER 3: Floating Right Cards · "✦ Cloud Copilot" + "Relay Corridors" */}
       <aside
         aria-label="Cloud Copilot and Relay Corridors"
         className="hidden lg:flex absolute right-4 top-[70px] w-[336px] max-h-[calc(100vh-86px)] z-20 flex-col gap-3 pointer-events-none"
       >
         {/* Card 1: ✦ Cloud Copilot (Exact Flatkey "Copilot" Card) */}
         <div
-          className={`pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl rounded-[22px] p-4 flex flex-col max-h-[54%] overflow-hidden transition-all duration-300 ${
+          className={`pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl rounded-[22px] p-4 flex flex-col max-h-[58%] overflow-hidden transition-all duration-300 ${
             tourStep === 2
               ? 'border border-[#B7E852]/55 shadow-[0_20px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(183,232,82,0.18)]'
               : 'border border-white/[0.07] shadow-[0_20px_50px_rgba(0,0,0,0.5)]'
           }`}
         >
-          <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
-            <span className="inline-flex items-center gap-2 text-[14px] font-medium text-[#F3F4F6]">
+          <div className="flex items-center justify-between gap-1.5 mb-3 shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#F3F4F6] whitespace-nowrap">
               <Sparkles
                 className={`w-4 h-4 ${
                   tourStep === 2 ? 'text-[#B7E852]' : 'text-[#F3F4F6]'
@@ -1887,19 +2029,62 @@ export default function App() {
               <span>Cloud Copilot</span>
             </span>
 
-            <button
-              type="button"
-              onClick={() => void handleRunCloudCommander()}
-              disabled={syncedBeacons.length === 0 || isRunningCloud}
-              className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] disabled:opacity-40 border border-white/[0.08] text-[11px] font-medium text-[#D1D5DB] transition cursor-pointer"
-            >
-              {isRunningCloud
-                ? 'Fusing…'
-                : syncedBeacons.length > 0
-                ? `Fuse (${syncedBeacons.length})`
-                : 'Standby'}
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid="cloud-recon-vision"
+                onClick={() => void handleTriggerCloudReconVision()}
+                disabled={isRunningCloud}
+                title="Attach FLIR Drone Hazard Recon to CITIZEN-CHARLIE & fuse via Gemini 2.5 Flash Vision (ONLY_IN_CLOUD)"
+                className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition cursor-pointer whitespace-nowrap disabled:opacity-40 ${
+                  activeReconBeacon
+                    ? 'bg-[#B7E852]/14 hover:bg-[#B7E852]/24 border-[#B7E852]/40 text-[#B7E852]'
+                    : 'bg-[#F2B84B]/12 hover:bg-[#F2B84B]/22 border-[#F2B84B]/35 text-[#F2B84B]'
+                }`}
+              >
+                📷 Recon Vision
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleRunCloudCommander()}
+                disabled={syncedBeacons.length === 0 || isRunningCloud}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] disabled:opacity-40 border border-white/[0.08] text-[11px] font-medium text-[#D1D5DB] transition cursor-pointer whitespace-nowrap"
+              >
+                {isRunningCloud
+                  ? 'Fusing…'
+                  : syncedBeacons.length > 0
+                  ? `Fuse (${syncedBeacons.length})`
+                  : 'Standby'}
+              </button>
+            </div>
           </div>
+
+          {activeReconBeacon?.photoDataUrl && (
+            <div
+              data-testid="cloud-recon-verified-strip"
+              className="mb-2.5 rounded-xl bg-black/35 border border-[#B7E852]/30 p-2 flex items-center gap-2.5 shrink-0"
+            >
+              <img
+                src={activeReconBeacon.photoDataUrl}
+                alt="FLIR Drone Recon of Sector 2 Harbor Bridge North Ramp"
+                className="w-16 h-10 rounded-lg object-cover border border-white/12 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className="text-[11px] font-semibold text-[#B7E852] truncate">
+                    Multimodal Recon Verified
+                  </span>
+                  <span className="px-1.5 py-[1px] rounded bg-[#B7E852]/14 text-[#B7E852] text-[9.5px] font-mono shrink-0">
+                    ONLY_IN_CLOUD
+                  </span>
+                </div>
+                <div className="text-[10.5px] text-[#D1D5DB] truncate mt-0.5">
+                  FLIR Drone Frame · North Span Blocked · Pine St Clear
+                </div>
+              </div>
+            </div>
+          )}
 
           {!brief ? (
             <div className="py-5 px-2 flex items-center gap-3">
@@ -1937,7 +2122,7 @@ export default function App() {
 
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-medium text-[#F3F4F6] leading-snug">
-                        {inc.title}
+                        {inc.title.replace(/\u2014/g, '·')}
                       </div>
                       <p className="text-[12px] text-[#8A919E] leading-relaxed mt-0.5">
                         {inc.actionPlan}
@@ -2187,6 +2372,16 @@ export default function App() {
         </div>
       )}
 
+          {/* Surge Economics & Live Benchmarks Modal */}
+          <SurgeBenchmarksModal
+            open={showBenchmarksModal}
+            onClose={() => setShowBenchmarksModal(false)}
+            beacons={beacons}
+            telemetry={telemetry}
+            capabilities={capabilities}
+            swRegistered={swRegistered}
+          />
+
           {/* Hybrid Architecture Modal */}
           <ArchitectureModal
             open={showArchModal}
@@ -2194,6 +2389,7 @@ export default function App() {
             capabilities={capabilities}
             rtcStatus={rtcStatus}
             swRegistered={swRegistered}
+            roomId={roomId}
           />
         </div>
       )}

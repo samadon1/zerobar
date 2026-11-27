@@ -321,7 +321,7 @@ export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
       setListening(true);
       window.setTimeout(() => {
         const voiceTranscript =
-          'My name is Alex Rivera (SSN 512-40-8821, Tel 415-392-7740) at 88 Pine Street Apt 3B. Roof collapsed after aftershock, gas leak hissing, 2 people trapped needing insulin — zero cell bars!';
+          'My name is Alex Rivera (SSN 512-40-8821, Tel 415-392-7740) at 88 Pine Street Apt 3B. Roof collapsed after aftershock, gas leak hissing, 2 people trapped needing insulin - zero cell bars!';
         setManualOverride(true);
         setSelectedCategories(['trapped', 'gas', 'insulin']);
         setInput(voiceTranscript);

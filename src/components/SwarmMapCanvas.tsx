@@ -37,7 +37,7 @@ const SECTOR_4_GEOFENCE_RING: [number, number][] = [
   [-122.5078, 37.8396], // Close ring
 ];
 
-const GEOFENCE_CALLOUT_ANCHOR: [number, number] = [-122.4982, 37.8414];
+const GEOFENCE_CALLOUT_ANCHOR: [number, number] = [-122.5028, 37.8424];
 
 interface MarkerVisualState {
   role: NodeRole;
@@ -80,6 +80,7 @@ interface ManagedCalloutMarker {
   modeLabelEl: HTMLSpanElement;
   lastStateKey: string;
   lastLngLat: [number, number];
+  lastOffsetY: number;
 }
 
 interface ActiveP2PLink {
@@ -251,19 +252,19 @@ function getNodeHybridStatusLabel(role: NodeRole): string {
 
 function createSelectedCalloutDOM(): Omit<
   ManagedCalloutMarker,
-  'marker' | 'lastStateKey' | 'lastLngLat'
+  'marker' | 'lastStateKey' | 'lastLngLat' | 'lastOffsetY'
 > {
   // Outer element owned by MapLibre (do NOT apply CSS transform on wrapperEl)
   const wrapperEl = document.createElement('div');
   wrapperEl.className = 'flex flex-col items-center pointer-events-none select-none';
-  wrapperEl.style.zIndex = '30';
+  wrapperEl.style.zIndex = '80';
 
   const cardEl = document.createElement('div');
   cardEl.className =
-    'bg-[#141619]/90 backdrop-blur-xl border border-white/12 rounded-xl px-3 py-2 shadow-[0_14px_34px_rgba(0,0,0,0.58)] min-w-[202px]';
-  cardEl.style.backdropFilter = 'blur(18px)';
+    'bg-[#141619]/96 backdrop-blur-xl border border-white/15 rounded-xl px-3 py-2 shadow-[0_18px_42px_rgba(0,0,0,0.72)] min-w-[202px]';
+  cardEl.style.backdropFilter = 'blur(20px)';
   (cardEl.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
-    'blur(18px)';
+    'blur(20px)';
 
   // Row 1: Callsign + Battery %
   const topRowEl = document.createElement('div');
@@ -329,12 +330,12 @@ function createSelectedCalloutDOM(): Omit<
   cardEl.appendChild(midRowEl);
   cardEl.appendChild(botRowEl);
 
-  // Crisp 6px hairline anchor stem right above the selected puck
+  // Crisp 10px hairline anchor stem giving clean vertical clearance above selected & adjacent pucks
   const stemEl = document.createElement('div');
   stemEl.style.width = '1px';
-  stemEl.style.height = '6px';
+  stemEl.style.height = '10px';
   stemEl.style.background =
-    'linear-gradient(180deg, rgba(255,255,255,0.24), rgba(183,232,82,0.55))';
+    'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(183,232,82,0.65))';
 
   wrapperEl.appendChild(cardEl);
   wrapperEl.appendChild(stemEl);
@@ -805,6 +806,11 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
           calloutEntry.marker.setLngLat(targetLngLat);
           calloutEntry.lastLngLat = targetLngLat;
         }
+        const targetOffsetY = activeNode.role === 'RELAY_MULE' ? -44 : -38;
+        if (calloutEntry.lastOffsetY !== targetOffsetY) {
+          calloutEntry.marker.setOffset([0, targetOffsetY]);
+          calloutEntry.lastOffsetY = targetOffsetY;
+        }
 
         applySelectedCalloutState(calloutEntry, activeNode);
       }
@@ -995,7 +1001,7 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
     const geofenceTooltipMarker = new MapLibreMarker({
       element: createGeofenceTooltipElement(),
       anchor: 'bottom',
-      offset: [0, -2],
+      offset: [0, -6],
     })
       .setLngLat(GEOFENCE_CALLOUT_ANCHOR)
       .addTo(map);
@@ -1005,7 +1011,7 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
     const selectedCalloutMarker = new MapLibreMarker({
       element: calloutDom.wrapperEl,
       anchor: 'bottom',
-      offset: [0, -28],
+      offset: [0, -38],
     })
       .setLngLat(DEFAULT_CENTER)
       .addTo(map);
@@ -1015,6 +1021,7 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
       marker: selectedCalloutMarker,
       lastStateKey: '',
       lastLngLat: [DEFAULT_CENTER[0], DEFAULT_CENTER[1]],
+      lastOffsetY: -38,
     };
 
     map.on('load', () => {
@@ -1393,15 +1400,10 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
 
     map.easeTo({
       center: framedCenter,
-      offset: [corridorOffsetX, 24],
+      offset: [corridorOffsetX, 28],
       zoom: 12.35,
-      pitch: selectedNodeId === 'node-alpha' ? 32 : 24,
-      bearing:
-        selectedNodeId === 'node-alpha'
-          ? -10
-          : selectedNodeId === 'node-cmd'
-          ? 8
-          : 0,
+      pitch: 24,
+      bearing: selectedNodeId === 'node-cmd' ? 6 : 0,
       duration: 900,
     });
   }, [selectedNodeId]);
