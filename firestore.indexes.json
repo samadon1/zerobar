@@ -1,29 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "beacons",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "syncedToCloud",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "syncedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "briefs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "generatedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }
