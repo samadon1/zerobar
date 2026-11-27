@@ -2,10 +2,21 @@
 
 > Follow this runbook to take ZeroBar from local dev to a live, App Check–protected Firebase Hosting deployment with database-layer Privacy Invariant rules before the **November 30, 2:00 PM PT** submission deadline.
 
+### Live Production Deployment Reference
+- **Live Firebase Hosting Demo:** [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app)
+- **Direct Mobile Field SOS URL:** [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01)
+- **Public GitHub Repo (MIT):** [https://github.com/samadon1/zerobar](https://github.com/samadon1/zerobar)
+- **Firebase Project ID:** `zerobar-hybrid-ai-2026`
+
 ---
 
 ## Prerequisites
-- Node.js 20+ and npm (`npm install` already run in `/Users/mac/.gemini/antigravity/scratch/zerobar`)
+- Node.js 20+ and npm:
+  ```bash
+  git clone https://github.com/samadon1/zerobar.git
+  cd zerobar
+  npm install
+  ```
 - Firebase CLI installed and logged in:
   ```bash
   npm install -g firebase-tools
@@ -15,14 +26,14 @@
 ---
 
 ## Step 1: Create the Firebase Project & Web App (1 min)
-1. Open the [Firebase Console](https://console.firebase.google.com/) and click **Create a project** (e.g., `zerobar-crisis-mesh`).
+1. Open the [Firebase Console](https://console.firebase.google.com/) and create or select project `zerobar-hybrid-ai-2026`.
 2. Inside the project, click **Web (`</>`)** to register a Web App (e.g., `ZeroBar Command Center`).
 3. Copy the `firebaseConfig` values (`apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`).
 4. Create your local `.firebaserc` from the template:
    ```bash
    cp .firebaserc.example .firebaserc
    ```
-   Replace `"your-zerobar-firebase-project-id"` in `.firebaserc` with your actual Firebase Project ID.
+   Set the default project in `.firebaserc` to `"zerobar-hybrid-ai-2026"`.
 
 ---
 
@@ -40,7 +51,7 @@
 ## Step 3: Enable Firebase App Check (Required for #BuildHybridAI) (1 min)
 1. In Firebase Console, go to **Build → App Check**.
 2. Click **Apps** → select your Web App → click **Register** under **reCAPTCHA v3**:
-   - Create a reCAPTCHA v3 site key at [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create) for `localhost`, `127.0.0.1`, `<your-project-id>.web.app`, and `<your-project-id>.firebaseapp.com`.
+   - Create a reCAPTCHA v3 site key at [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create) for `localhost`, `127.0.0.1`, `zerobar-hybrid-ai-2026.web.app`, and `zerobar-hybrid-ai-2026.firebaseapp.com`.
    - Paste the **Secret Key** into Firebase Console and save the **Site Key** for `.env`.
 3. **Register a Debug Token (for local testing & demo recording):**
    - In App Check → **Apps** → click the `⋮` menu on your Web App → **Manage debug tokens** → **Add debug token**.
@@ -54,17 +65,17 @@
 ```bash
 cp .env.example .env
 ```
-Populate `.env` with your Firebase Console values:
+Populate `.env` with your Firebase Console values for `zerobar-hybrid-ai-2026`:
 ```dotenv
 VITE_FIREBASE_API_KEY=AIza...
-VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+VITE_FIREBASE_AUTH_DOMAIN=zerobar-hybrid-ai-2026.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=zerobar-hybrid-ai-2026
+VITE_FIREBASE_STORAGE_BUCKET=zerobar-hybrid-ai-2026.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
 VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef123456
 
 # Firebase App Check
-VITE_FIREBASE_APP_CHECK_SITE_KEY=6Lc...your_recaptcha_v3_site_key
+VITE_FIREBASE_APP_CHECK_SITE_KEY=6Lc...recaptcha_v3_site_key
 VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN=true
 
 # Cloud Gemini Model
@@ -84,29 +95,30 @@ This deploys:
 - `firestore.rules` enforcing the **ZeroBar Privacy Invariant** (`!('rawInputLocalOnly' in data)`, SSN regex rejection, `beaconBytes <= 2048`, and `CompactBeaconPayload` schema validation).
 - `firestore.indexes.json` for `beacons` and `briefs` queries.
 
-Your live URL will be:
-`https://<your-project-id>.web.app`
+Your live URLs are:
+- **Command Center:** [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app)
+- **Mobile Field SOS:** [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01)
 
 ---
 
 ## Step 6: 60-Second Pre-Deadline Verification Checklist (Before Nov 30, 2:00 PM PT)
 
-Run through every check on your live `https://<your-project-id>.web.app` URL:
+Run through every check on your live [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app) URL:
 
-- [ ] **1. Telemetry Strip & App Check:** Open the live URL in Chrome (v138+ with Gemini Nano flags enabled). Confirm the header shows `Firebase Connected`, `App Check Active`, and `Chrome Nano Ready`.
+- [ ] **1. Telemetry Strip & App Check:** Open [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app) in Chrome (v138+ with Gemini Nano flags enabled). Confirm the header shows `Firebase Connected`, `App Check Active`, and `Chrome Nano Ready`.
 - [ ] **2. End-to-End Hybrid Demo:** Click **Run 7.2 Quake Swarm Demo**. Verify:
   - Stage 1 (`PII_SCRUB_VAULT`) logs `ONLY_ON_DEVICE` → `ON_DEVICE`.
   - Stage 2 (`TRIAGE_COMPRESS`) logs `PREFER_ON_DEVICE` → `ON_DEVICE` with `<400B` beacon size.
   - Stage 3 (`CLOUD_SWARM_FUSION`) logs `ONLY_IN_CLOUD` → `IN_CLOUD` and resolves the Harbor Bridge North vs. Pine St South contradiction.
   - Directives (`<1KB`) appear on the offline citizen nodes.
-- [ ] **3. Database-Layer Privacy Invariant Check:** Open **Firebase Console → Firestore Database → Data → `rooms/CASCADIA-01/beacons`** and verify:
+- [ ] **3. Database-Layer Privacy Invariant Check:** Open **Firebase Console → Firestore Database → Data → `rooms/CASCADIA-01/beacons`** (project `zerobar-hybrid-ai-2026`) and verify:
   - Documents exist with `payload.sev`, `payload.cat`, `payload.sum`, `beaconBytes <= 2048`.
   - **Zero** documents contain `rawInputLocalOnly` or unredacted SSNs.
   - *(Optional Rules Playground test)* In **Firestore → Rules → Rules Playground**, simulate a `create` on `/rooms/CASCADIA-01/beacons/ZB-TEST` that includes `"rawInputLocalOnly": "My SSN is 123-45-6789"` → confirm it is **DENIED**.
 - [ ] **4. Offline PWA Reload Check:** Open DevTools → **Application → Service Workers** (confirm `sw.js` is activated) → toggle **Offline** → reload the page → confirm ZeroBar loads cleanly and processes an offline SOS with zero network errors.
-- [ ] **5. Mobile QR Pairing Check:** Click **Pair Phone** and open `?mode=mobile&room=CASCADIA-01` in a second tab or phone to verify live P2P/Firestore sync.
+- [ ] **5. Mobile QR Pairing Check:** Click **Pair Phone** or open [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01) in a second tab or phone to verify live P2P/Firestore sync.
 - [ ] **6. Devpost Submission Check:**
-  - Public GitHub repository URL accessible (no `.env` or `.firebaserc` committed!).
-  - Live Firebase Hosting URL (`https://<your-project-id>.web.app`) tested in an incognito window.
+  - Public GitHub repository ([https://github.com/samadon1/zerobar](https://github.com/samadon1/zerobar)) accessible (no `.env` or `.firebaserc` committed!).
+  - Live Firebase Hosting URL ([https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app)) tested in an incognito window.
   - Public YouTube demo video (`<= 3:00`, recorded from `docs/DEMO_VIDEO_SCRIPT.md`) embedded on Devpost.
   - Submission text pasted from `docs/DEVPOST_SUBMISSION.md` and submitted well ahead of **Nov 30, 2:00 PM PT**.

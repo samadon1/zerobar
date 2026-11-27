@@ -2,6 +2,19 @@
 
 > Built for the **#BuildHybridAI 2026 Hackathon** powered by **Firebase AI Logic Hybrid Inference**, **Firebase App Check**, and **Firestore Offline Persistence**.
 
+- **Live Firebase Hosting Demo:** [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app)
+- **Direct Mobile Field SOS URL:** [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01)
+- **Public GitHub Repo (MIT):** [https://github.com/samadon1/zerobar](https://github.com/samadon1/zerobar)
+- **Firebase Project ID:** `zerobar-hybrid-ai-2026`
+
+## 60-Second Judge Verification Guide
+
+1. **Launch the Live Command Center (15s):** Open [https://zerobar-hybrid-ai-2026.web.app](https://zerobar-hybrid-ai-2026.web.app) and click **Run 7.2 Quake Swarm Demo**. Watch the top **Hybrid Telemetry Strip** log real `inferenceSource` proofs (`ON_DEVICE` vs `IN_CLOUD`) across all 3 stages: local PII scrubbing, `<400B` P2P beacon hops, Cloud Gemini contradiction resolution, and `<1KB` directive downlink.
+2. **Test the Mobile Field SOS View (15s):** Open [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01) on a phone or second browser tab. Toggle **0-Bar Offline Mode**, send a voice/text SOS or attach a hazard photo, and verify instant offline survival steps + P2P/Firestore sync.
+3. **Inspect the `Hybrid Architecture` Blueprint Modal (10s):** Click **Hybrid Architecture** in the header of the [Live Demo](https://zerobar-hybrid-ai-2026.web.app) to review the 3-tier `InferenceMode` pipeline (`ONLY_ON_DEVICE`, `PREFER_ON_DEVICE`, `ONLY_IN_CLOUD`), live latency/byte telemetry, and security boundaries.
+4. **Verify the `PII Vault` Redaction Proof (10s):** Inspect the **PII Privacy Vault** side-by-side diff in the Command Center (showing names, SSNs, and street addresses stripped strictly on-device) and verify the database-layer hard enforcement in [`firestore.rules`](https://github.com/samadon1/zerobar/blob/main/firestore.rules) (rejects `rawInputLocalOnly`, SSN patterns, and payloads `> 2048B`).
+5. **Review the Native iOS SwiftUI Companion (10s):** Browse [`ios/ZeroBarField/`](https://github.com/samadon1/zerobar/tree/main/ios/ZeroBarField) — specifically [`HybridAIEngine.swift`](https://github.com/samadon1/zerobar/blob/main/ios/ZeroBarField/Services/HybridAIEngine.swift) — for the Apple Foundation Models + `AppAttest` SwiftUI Field Node sharing 100% Firestore schema parity with the web app.
+
 ## The Problem
 During earthquakes, wildfires, and grid blackouts, **90% of trapped citizens have zero cellular bars**, while only intermittent responder vehicles or ridge relays briefly catch 1 bar of signal.
 - **Cloud-only AI fails completely** in the blackout zone and forces citizens to leak raw personal/medical data (names, SSNs, exact home addresses) over untrusted relays.
@@ -20,9 +33,11 @@ ZeroBar uses **three distinct `InferenceMode` configurations** in `src/services/
 ## Quick Start
 
 ```bash
+git clone https://github.com/samadon1/zerobar.git
+cd zerobar
 npm install
 cp .env.example .env
-# Fill in your Firebase project keys + App Check debug token in .env
+# Fill in your Firebase project keys (e.g., zerobar-hybrid-ai-2026) + App Check debug token in .env
 npm run dev
 ```
 
@@ -37,7 +52,12 @@ ZeroBar initializes `initializeAppCheck` with `ReCaptchaV3Provider` and supports
 ## Features Included
 - **1-Click 7.2 Quake Swarm Demo:** Instantly fires 3 realistic multi-language/PII-heavy distress calls across offline nodes, sweeps `RELAY-MULE-01` across the Uplink Ridge, fuses reports in Cloud Gemini (resolving the Harbor Bridge North vs. Pine St South contradiction), and delivers `<1KB` directives back into the blackout zone.
 - **Interactive Drag-and-Drop Mesh Map:** Drag `RELAY-MULE-01` or any citizen node to watch dynamic P2P links form and packets hop live.
-- **Mobile Field Node + QR Pairing:** Click **Pair Phone** to open `?mode=mobile&room=CASCADIA-01` on a phone or second tab with Web Speech voice SOS, camera hazard photo upload, and an Airplane/0-Bar Offline toggle.
+- **Mobile Field Node + QR Pairing:** Click **Pair Phone** or open [https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01) on a phone or second tab with Web Speech voice SOS, camera hazard photo upload, and an Airplane/0-Bar Offline toggle.
+
+## Documentation
+- [Devpost Submission Copy](./docs/DEVPOST_SUBMISSION.md)
+- [2:45 Demo Video Script](./docs/DEMO_VIDEO_SCRIPT.md)
+- [Firebase Deployment & Verification Guide](./docs/DEPLOYMENT_GUIDE.md)
 
 ## License
 MIT — see [LICENSE](./LICENSE).

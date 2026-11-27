@@ -10,6 +10,12 @@
 ## Tagline (Short Pitch)
 Zero cellular bars. Zero leaked PII. On-device Gemini Nano & Apple Foundation Models compress offline distress calls into <400B P2P beacons; Cloud Gemini fuses the swarm into <1KB rescue directives.
 
+## Live Demo & Repository Links
+- **Live Firebase Hosting Demo:** https://zerobar-hybrid-ai-2026.web.app
+- **Direct Mobile Field SOS View:** https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01
+- **Public GitHub Repository (MIT):** https://github.com/samadon1/zerobar
+- **Firebase Project ID:** `zerobar-hybrid-ai-2026`
+
 ---
 
 ## Inspiration
@@ -58,7 +64,7 @@ Rather than using hybrid inference as a generic fallback, ZeroBar assigns each `
 
 ### 3. True Multi-Platform & Offline-First Architecture
 - **Web Command Center & Mobile Field PWA** (React 19, TypeScript, Vite, Tailwind CSS):
-  - Interactive dark-mode tactical vector map with drag-and-drop mesh nodes, animated P2P packet hops, 1-click **7.2 Quake Swarm Demo**, and QR-code phone pairing (`?mode=mobile&room=CASCADIA-01`).
+  - Interactive dark-mode tactical vector map with drag-and-drop mesh nodes, animated P2P packet hops, 1-click **7.2 Quake Swarm Demo**, and QR-code phone pairing ([`https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01`](https://zerobar-hybrid-ai-2026.web.app/?mode=mobile&room=CASCADIA-01)).
   - True offline PWA (`public/manifest.webmanifest` + `public/sw.js`) with network-first cache fallback and Firestore `persistentLocalCache` + `persistentMultipleTabManager` so the app reloads and operates in Airplane Mode.
   - Real **WebRTC `RTCDataChannel`** P2P mesh transport (`src/services/webrtcMesh.ts`) for live cross-tab/cross-device `<400B` beacon exchange.
 - **Native iOS SwiftUI Field Node** (`ios/ZeroBarField/`):

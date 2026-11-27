@@ -106,6 +106,7 @@ export function getFirebaseRuntime(): FirebaseRuntime {
   let db: Firestore | null = null;
   try {
     db = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),

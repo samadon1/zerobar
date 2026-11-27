@@ -134,7 +134,7 @@ service cloud.firestore {
         allow read: if isValidRoomId(roomId);
         allow create: if isValidRoomId(roomId)
           && !('rawInputLocalOnly' in request.resource.data)
-          && request.resource.data.keys().hasAll(['fromPeerId', 'type', 'ts']);
+          && request.resource.data.keys().hasAll(['id', 'roomId', 'from', 'kind', 'ts']);
         allow update, delete: if false;
       }
     }
