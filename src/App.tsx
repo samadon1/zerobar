@@ -27,6 +27,7 @@ import {
   INITIAL_MESH_NODES,
   CRISIS_PRESETS,
   distanceBetween,
+  xyToLngLat,
 } from './data/presets';
 import type {
   CloudIncidentBrief,
@@ -54,6 +55,11 @@ import { SwarmMapCanvas, UPLINK_ZONE_X } from './components/SwarmMapCanvas';
 import { InferenceBadge, TelemetryStrip } from './components/TelemetryStrip';
 import { MobileFieldView } from './components/MobileFieldView';
 import { ArchitectureModal } from './components/ArchitectureModal';
+import {
+  GuidedTourBar,
+  STORY_TOUR_CHAPTERS,
+  type TourStepIndex,
+} from './components/GuidedTourBar';
 
 type QueueTab = 'all' | 'vault' | 'telemetry';
 
@@ -212,12 +218,22 @@ export default function App() {
   const [isSimulatingQuake, setIsSimulatingQuake] = useState(false);
   const [isPatrolling, setIsPatrolling] = useState(false);
 
+  const [tourStep, setTourStep] = useState<TourStepIndex | null>(null);
+  const [tourChapterStartedAt, setTourChapterStartedAt] = useState<number>(0);
+  const [voiceoverEnabled, setVoiceoverEnabled] = useState<boolean>(false);
+
   const busRef = useRef<WebRTCMeshTransport | null>(null);
   const patrolRafRef = useRef<number | null>(null);
+  const tourTimeoutRef = useRef<number | null>(null);
+  const tourRunIdRef = useRef<number>(0);
   const seedCancelRef = useRef<boolean>(false);
   const hasSeededRef = useRef<boolean>(false);
   const nodesRef = useRef<MeshNode[]>(nodes);
   nodesRef.current = nodes;
+  const beaconsRef = useRef<TriageBeacon[]>(beacons);
+  beaconsRef.current = beacons;
+  const briefRef = useRef<CloudIncidentBrief | null>(brief);
+  briefRef.current = brief;
 
   // Detect Chrome Gemini Nano + Firebase App Check capabilities & Service Worker status
   useEffect(() => {
@@ -232,11 +248,17 @@ export default function App() {
     }
   }, []);
 
-  // Cancel any active rAF glide on unmount
+  // Cancel any active rAF glide, tour timer, or speech on unmount
   useEffect(() => {
     return () => {
       if (patrolRafRef.current !== null) {
         cancelAnimationFrame(patrolRafRef.current);
+      }
+      if (tourTimeoutRef.current !== null) {
+        window.clearTimeout(tourTimeoutRef.current);
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
@@ -540,14 +562,17 @@ export default function App() {
   }, [brief, deliveredDirectivesCount, syncedBeacons.length]);
 
   const handleMoveNode = useCallback((nodeId: string, x: number, y: number) => {
-    setNodes((prev) =>
-      prev.map((n) => {
+    const [lng, lat] = xyToLngLat(x, y);
+    setNodes((prev) => {
+      const next = prev.map((n) => {
         if (n.id !== nodeId) return n;
         const isOnlineNow =
           n.role === 'COMMAND_GATEWAY' ? true : x >= UPLINK_ZONE_X;
-        return { ...n, x, y, online: isOnlineNow };
-      })
-    );
+        return { ...n, x, y, lng, lat, online: isOnlineNow };
+      });
+      nodesRef.current = next;
+      return next;
+    });
   }, []);
 
   const stopRelayGlide = useCallback(() => {
@@ -701,7 +726,316 @@ export default function App() {
     }
   };
 
+  const endStoryTour = useCallback(
+    (options?: { keepMobileMode?: boolean }) => {
+      tourRunIdRef.current += 1;
+      if (tourTimeoutRef.current !== null) {
+        window.clearTimeout(tourTimeoutRef.current);
+        tourTimeoutRef.current = null;
+      }
+      stopRelayGlide();
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setTourStep(null);
+      if (!options?.keepMobileMode) {
+        setMobileMode(false);
+      }
+    },
+    [stopRelayGlide]
+  );
+
+  const ensureBlackoutBeaconsForTour = useCallback(
+    async (runId: number): Promise<TriageBeacon[] | null> => {
+      if (beaconsRef.current.length >= 3) {
+        return beaconsRef.current.map((b) => ({
+          ...b,
+          syncedToCloud: false,
+          syncedAt: undefined,
+          hops: [b.originNodeId],
+        }));
+      }
+
+      const freshBeacons: TriageBeacon[] = [];
+      const freshTelemetry: TelemetryRecord[] = [];
+
+      for (const preset of CRISIS_PRESETS) {
+        if (tourRunIdRef.current !== runId) return null;
+        const originNode =
+          INITIAL_MESH_NODES.find((n) => n.id === preset.nodeId) ||
+          INITIAL_MESH_NODES[0];
+        const { beacon, telemetryEvents } = await processCitizenDistress(
+          originNode,
+          preset.rawText
+        );
+        freshBeacons.push({
+          ...beacon,
+          syncedToCloud: false,
+          syncedAt: undefined,
+          hops: [originNode.id],
+        });
+        freshTelemetry.push(...telemetryEvents);
+      }
+
+      if (tourRunIdRef.current !== runId) return null;
+      setTelemetry((prev) => [...freshTelemetry.reverse(), ...prev]);
+      return freshBeacons;
+    },
+    []
+  );
+
+  const executeTourChapter = useCallback(
+    async (step: TourStepIndex) => {
+      const runId = ++tourRunIdRef.current;
+      if (tourTimeoutRef.current !== null) {
+        window.clearTimeout(tourTimeoutRef.current);
+        tourTimeoutRef.current = null;
+      }
+
+      seedCancelRef.current = true;
+      stopRelayGlide();
+      setIsPatrolling(false);
+      setShowComposer(false);
+      setShowArchModal(false);
+      setShowQrModal(false);
+
+      const chapterMeta = STORY_TOUR_CHAPTERS[step];
+      const chapterStart = Date.now();
+      setTourStep(step);
+      setTourChapterStartedAt(chapterStart);
+
+      const scheduleNext = (nextFn: () => void, minDurationMs: number) => {
+        if (tourRunIdRef.current !== runId) return;
+        const elapsed = Date.now() - chapterStart;
+        const remaining = Math.max(400, minDurationMs - elapsed);
+        tourTimeoutRef.current = window.setTimeout(() => {
+          if (tourRunIdRef.current !== runId) return;
+          nextFn();
+        }, remaining);
+      };
+
+      // CHAPTER 1 (~8s): Focus node-alpha + switch Triage Queue to PII Vault (ONLY_ON_DEVICE proof)
+      if (step === 0) {
+        setMobileMode(false);
+        const unsyncedBeacons = await ensureBlackoutBeaconsForTour(runId);
+        if (!unsyncedBeacons || tourRunIdRef.current !== runId) return;
+
+        const [relayLng, relayLat] = xyToLngLat(63, 28);
+        const stagedNodes = INITIAL_MESH_NODES.map((n) => {
+          if (n.role === 'RELAY_MULE') {
+            return {
+              ...n,
+              x: 63,
+              y: 28,
+              lng: relayLng,
+              lat: relayLat,
+              online: false,
+              beaconsHeld: [],
+              directivesReceived: [],
+            };
+          }
+          if (n.role === 'COMMAND_GATEWAY') {
+            return { ...n, beaconsHeld: [], directivesReceived: [] };
+          }
+          const ownIds = unsyncedBeacons
+            .filter((b) => b.originNodeId === n.id)
+            .map((b) => b.id);
+          return {
+            ...n,
+            beaconsHeld: ownIds,
+            directivesReceived: [],
+          };
+        });
+
+        nodesRef.current = stagedNodes;
+        beaconsRef.current = unsyncedBeacons;
+        briefRef.current = null;
+
+        setBrief(null);
+        setFlights([]);
+        setBeacons(unsyncedBeacons);
+        setNodes(stagedNodes);
+        setSelectedNodeId('node-alpha');
+        setQueueTab('vault');
+
+        scheduleNext(() => {
+          void executeTourChapter(1);
+        }, chapterMeta.durationMs);
+        return;
+      }
+
+      // CHAPTER 2 (~10s): Switch tab to All + smoothly glide RELAY-MULE-01 across Golden Gate blackout sector
+      if (step === 1) {
+        setMobileMode(false);
+        setQueueTab('all');
+
+        if (beaconsRef.current.length < 3) {
+          const unsyncedBeacons = await ensureBlackoutBeaconsForTour(runId);
+          if (!unsyncedBeacons || tourRunIdRef.current !== runId) return;
+          const [relayLng, relayLat] = xyToLngLat(63, 28);
+          const stagedNodes = INITIAL_MESH_NODES.map((n) => {
+            if (n.role === 'RELAY_MULE') {
+              return {
+                ...n,
+                x: 63,
+                y: 28,
+                lng: relayLng,
+                lat: relayLat,
+                online: false,
+                beaconsHeld: [],
+                directivesReceived: [],
+              };
+            }
+            const ownIds = unsyncedBeacons
+              .filter((b) => b.originNodeId === n.id)
+              .map((b) => b.id);
+            return { ...n, beaconsHeld: ownIds, directivesReceived: [] };
+          });
+          nodesRef.current = stagedNodes;
+          beaconsRef.current = unsyncedBeacons;
+          setBeacons(unsyncedBeacons);
+          setNodes(stagedNodes);
+        }
+
+        setSelectedNodeId('node-relay');
+        void glideNodeAlongWaypoints(
+          'node-relay',
+          [
+            { x: 38, y: 25 }, // Oakview Clinic (CITIZEN-BRAVO)
+            { x: 29, y: 40 }, // Cedar St Overpass (CITIZEN-ALPHA)
+            { x: 45, y: 46 }, // Harbor Bridge North (CITIZEN-CHARLIE)
+          ],
+          2400
+        );
+
+        scheduleNext(() => {
+          void executeTourChapter(2);
+        }, chapterMeta.durationMs);
+        return;
+      }
+
+      // CHAPTER 3 (~11s): Glide across Uplink Ridge (x = 72), fire real runCloudSwarmCommander, & downlink directives
+      if (step === 2) {
+        setMobileMode(false);
+        setQueueTab('all');
+
+        let activeBeacons = beaconsRef.current;
+        if (activeBeacons.length < 3) {
+          const generated = await ensureBlackoutBeaconsForTour(runId);
+          if (!generated || tourRunIdRef.current !== runId) return;
+          activeBeacons = generated;
+          beaconsRef.current = activeBeacons;
+          setBeacons(activeBeacons);
+        }
+
+        const allIds = activeBeacons.map((b) => b.id);
+        const preRidgeNodes = nodesRef.current.map((n) =>
+          n.role === 'RELAY_MULE'
+            ? {
+                ...n,
+                beaconsHeld: Array.from(new Set([...n.beaconsHeld, ...allIds])),
+              }
+            : n
+        );
+        nodesRef.current = preRidgeNodes;
+        setNodes(preRidgeNodes);
+
+        setSelectedNodeId('node-relay');
+        await glideNodeAlongWaypoints(
+          'node-relay',
+          [{ x: 72, y: 68 }],
+          2000
+        );
+        if (tourRunIdRef.current !== runId) return;
+
+        const syncedList: TriageBeacon[] = activeBeacons.map((b) => ({
+          ...b,
+          syncedToCloud: true,
+          syncedAt: Date.now(),
+          hops: b.hops.includes('node-cmd')
+            ? b.hops
+            : [b.originNodeId, 'node-relay', 'node-cmd'],
+        }));
+        beaconsRef.current = syncedList;
+        setBeacons(syncedList);
+        setSelectedNodeId('node-cmd');
+
+        setIsRunningCloud(true);
+        try {
+          const fusedBrief = await runCloudSwarmCommander(syncedList);
+          if (tourRunIdRef.current !== runId) return;
+          briefRef.current = fusedBrief;
+          setBrief(fusedBrief);
+          setTelemetry((prev) => [fusedBrief.telemetry, ...prev]);
+          saveBriefToFirestore(roomId, fusedBrief).catch(() => {});
+          busRef.current?.publish({
+            type: 'BRIEF_UPDATED',
+            roomId,
+            brief: fusedBrief,
+          });
+        } finally {
+          setIsRunningCloud(false);
+        }
+
+        if (tourRunIdRef.current !== runId) return;
+        setSelectedNodeId('node-relay');
+        await glideNodeAlongWaypoints(
+          'node-relay',
+          [
+            { x: 45, y: 46 },
+            { x: 33, y: 34 },
+          ],
+          1950
+        );
+        if (tourRunIdRef.current !== runId) return;
+
+        scheduleNext(() => {
+          void executeTourChapter(3);
+        }, chapterMeta.durationMs);
+        return;
+      }
+
+      // CHAPTER 4 (~9s): Switch to Field SOS (Dual-iPhone 16 Pro Radar + 12-tile SOS Grid), then return cleanly
+      if (step === 3) {
+        setMobileMode(true);
+        scheduleNext(() => {
+          setMobileMode(false);
+          setSelectedNodeId('node-alpha');
+          setQueueTab('all');
+          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          setTourStep(null);
+        }, chapterMeta.durationMs);
+      }
+    },
+    [
+      ensureBlackoutBeaconsForTour,
+      glideNodeAlongWaypoints,
+      roomId,
+      stopRelayGlide,
+    ]
+  );
+
+  const startStoryTour = useCallback(() => {
+    void executeTourChapter(0);
+  }, [executeTourChapter]);
+
+  const advanceStoryTour = useCallback(() => {
+    if (tourStep === null) return;
+    if (tourStep < 3) {
+      void executeTourChapter((tourStep + 1) as TourStepIndex);
+    } else {
+      endStoryTour();
+      setSelectedNodeId('node-alpha');
+      setQueueTab('all');
+    }
+  }, [endStoryTour, executeTourChapter, tourStep]);
+
   const toggleRelayPatrol = () => {
+    if (tourStep !== null) {
+      endStoryTour({ keepMobileMode: true });
+    }
     if (isPatrolling) {
       stopRelayGlide();
       setIsPatrolling(false);
@@ -727,6 +1061,9 @@ export default function App() {
 
   const runOneClickQuakeDemo = async () => {
     if (isSimulatingQuake) return;
+    if (tourStep !== null) {
+      endStoryTour({ keepMobileMode: true });
+    }
     seedCancelRef.current = true;
     stopRelayGlide();
     setIsPatrolling(false);
@@ -798,9 +1135,15 @@ export default function App() {
   };
 
   const handleReset = () => {
+    if (tourStep !== null) {
+      endStoryTour({ keepMobileMode: true });
+    }
     seedCancelRef.current = true;
     stopRelayGlide();
     setIsPatrolling(false);
+    nodesRef.current = INITIAL_MESH_NODES;
+    beaconsRef.current = [];
+    briefRef.current = null;
     setNodes(INITIAL_MESH_NODES);
     setBeacons([]);
     setTelemetry([]);
@@ -814,24 +1157,32 @@ export default function App() {
     roomId
   )}`;
 
-  // Dedicated Studio Dual-iPhone Field SOS View
-  if (mobileMode) {
-    const mobileDirectives = brief?.directives || [];
-    return (
-      <MobileFieldView
-        roomId={roomId}
-        onExitMobile={() => setMobileMode(false)}
-        onBeaconCreated={(beacon) => {
-          setBeacons((prev) => [beacon, ...prev]);
-          busRef.current?.publish({ type: 'BEACON_CREATED', roomId, beacon });
-        }}
-        receivedDirectives={mobileDirectives}
-      />
-    );
-  }
+  const mobileDirectives = brief?.directives || [];
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0D1013] text-[#F3F4F6]">
+    <>
+      {mobileMode ? (
+        <MobileFieldView
+          roomId={roomId}
+          onExitMobile={() => {
+            if (tourStep === 3) {
+              endStoryTour();
+            } else {
+              setMobileMode(false);
+            }
+          }}
+          onBeaconCreated={(beacon) => {
+            setBeacons((prev) => [beacon, ...prev]);
+            busRef.current?.publish({
+              type: 'BEACON_CREATED',
+              roomId,
+              beacon,
+            });
+          }}
+          receivedDirectives={mobileDirectives}
+        />
+      ) : (
+        <div className="relative w-screen h-screen overflow-hidden bg-[#0D1013] text-[#F3F4F6]">
       {/* LAYER 0: Full-Bleed Spatial Coastal Terrain Map */}
       <div className="absolute inset-0 z-0">
         <SwarmMapCanvas
@@ -931,8 +1282,33 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Right: Simulate 7.2 Quake Pill + Flatkey Segmented Live | Patrol Pill */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right: Story Tour Pill + Simulate 7.2 Quake Pill + Flatkey Segmented Live | Patrol Pill */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              if (tourStep !== null) {
+                endStoryTour();
+              } else {
+                startStoryTour();
+              }
+            }}
+            className={`h-9 px-3.5 rounded-xl border text-[13px] font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+              tourStep !== null
+                ? 'bg-[#B7E852] text-[#0D1013] border-[#B7E852] shadow-[0_0_22px_rgba(183,232,82,0.38)]'
+                : 'bg-[#B7E852]/14 hover:bg-[#B7E852]/24 border-[#B7E852]/40 text-[#B7E852] shadow-[0_0_18px_rgba(183,232,82,0.14)]'
+            }`}
+          >
+            <span aria-hidden="true" className="text-[13px] leading-none">
+              ✦
+            </span>
+            <span>
+              {tourStep !== null
+                ? `Story Tour (${tourStep + 1}/4)`
+                : 'Story Tour'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={runOneClickQuakeDemo}
@@ -996,7 +1372,13 @@ export default function App() {
         className="absolute left-4 top-[70px] bottom-4 w-[352px] max-w-[calc(100vw-32px)] z-20 flex flex-col gap-3 pointer-events-none"
       >
         {/* Top Main Frosted Glass Card */}
-        <div className="pointer-events-auto flex-1 min-h-0 flex flex-col bg-[#141619]/86 backdrop-blur-2xl border border-white/[0.07] rounded-[22px] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden relative">
+        <div
+          className={`pointer-events-auto flex-1 min-h-0 flex flex-col bg-[#141619]/86 backdrop-blur-2xl rounded-[22px] p-4 overflow-hidden relative transition-all duration-300 ${
+            tourStep === 0
+              ? 'border border-[#B7E852]/50 shadow-[0_20px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(183,232,82,0.16)]'
+              : 'border border-white/[0.07] shadow-[0_20px_50px_rgba(0,0,0,0.5)]'
+          }`}
+        >
           {/* Card Header */}
           <div className="flex items-center justify-between gap-2 mb-3.5 shrink-0">
             <h1 className="text-[18px] font-medium tracking-[-0.01em] text-[#F3F4F6]">
@@ -1487,10 +1869,21 @@ export default function App() {
         className="hidden lg:flex absolute right-4 top-[70px] w-[336px] max-h-[calc(100vh-86px)] z-20 flex-col gap-3 pointer-events-none"
       >
         {/* Card 1: ✦ Cloud Copilot (Exact Flatkey "Copilot" Card) */}
-        <div className="pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl border border-white/[0.07] rounded-[22px] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col max-h-[54%] overflow-hidden">
+        <div
+          className={`pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl rounded-[22px] p-4 flex flex-col max-h-[54%] overflow-hidden transition-all duration-300 ${
+            tourStep === 2
+              ? 'border border-[#B7E852]/55 shadow-[0_20px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(183,232,82,0.18)]'
+              : 'border border-white/[0.07] shadow-[0_20px_50px_rgba(0,0,0,0.5)]'
+          }`}
+        >
           <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
             <span className="inline-flex items-center gap-2 text-[14px] font-medium text-[#F3F4F6]">
-              <Sparkles className="w-4 h-4 text-[#F3F4F6]" strokeWidth={1.75} />
+              <Sparkles
+                className={`w-4 h-4 ${
+                  tourStep === 2 ? 'text-[#B7E852]' : 'text-[#F3F4F6]'
+                }`}
+                strokeWidth={1.75}
+              />
               <span>Cloud Copilot</span>
             </span>
 
@@ -1566,7 +1959,13 @@ export default function App() {
         </div>
 
         {/* Card 2: Relay Corridors (Exact Flatkey "All Trips" Lime Timeline Card) */}
-        <div className="pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl border border-white/[0.07] rounded-[22px] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col">
+        <div
+          className={`pointer-events-auto bg-[#141619]/86 backdrop-blur-2xl rounded-[22px] p-4 flex flex-col transition-all duration-300 ${
+            tourStep === 2
+              ? 'border border-[#B7E852]/55 shadow-[0_20px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(183,232,82,0.16)]'
+              : 'border border-white/[0.07] shadow-[0_20px_50px_rgba(0,0,0,0.5)]'
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2 text-[14px] font-medium text-[#F3F4F6]">
               <Route className="w-4 h-4 text-[#8A919E]" strokeWidth={1.75} />
@@ -1788,14 +2187,27 @@ export default function App() {
         </div>
       )}
 
-      {/* Hybrid Architecture Modal */}
-      <ArchitectureModal
-        open={showArchModal}
-        onClose={() => setShowArchModal(false)}
-        capabilities={capabilities}
-        rtcStatus={rtcStatus}
-        swRegistered={swRegistered}
+          {/* Hybrid Architecture Modal */}
+          <ArchitectureModal
+            open={showArchModal}
+            onClose={() => setShowArchModal(false)}
+            capabilities={capabilities}
+            rtcStatus={rtcStatus}
+            swRegistered={swRegistered}
+          />
+        </div>
+      )}
+
+      {/* Floating Lower-Third Cinematic Story Tour Bar (Visible on Live Map & Field SOS) */}
+      <GuidedTourBar
+        tourStep={tourStep}
+        chapterStartedAt={tourChapterStartedAt}
+        voiceoverEnabled={voiceoverEnabled}
+        onToggleVoiceover={() => setVoiceoverEnabled((v) => !v)}
+        onSelectStep={(step) => void executeTourChapter(step)}
+        onNextStep={advanceStoryTour}
+        onEndTour={() => endStoryTour()}
       />
-    </div>
+    </>
   );
 }

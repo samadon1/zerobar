@@ -80,9 +80,15 @@ check('Hackathon Gates', 'firebase/ai imports & invocations', () => {
 check('Hackathon Gates', 'firebase/app-check Web + iOS App Attest', () => {
   assert(firebaseTs.includes("from 'firebase/app-check'"), 'Missing firebase/app-check import');
   assert(firebaseTs.includes('initializeAppCheck('), 'Missing initializeAppCheck() call');
-  assert(firebaseTs.includes('new ReCaptchaV3Provider('), 'Missing ReCaptchaV3Provider');
+  const hasEnterprise = firebaseTs.includes('new ReCaptchaEnterpriseProvider(');
+  const hasV3 = firebaseTs.includes('new ReCaptchaV3Provider(');
+  assert(
+    hasEnterprise || hasV3,
+    'Missing ReCaptchaEnterpriseProvider or ReCaptchaV3Provider'
+  );
   assert(swiftEngine.includes('AppAttestProvider'), 'Missing iOS AppAttestProvider');
-  return 'ReCaptchaV3Provider (Web) + AppAttestProvider (iOS) verified';
+  const webProvider = hasEnterprise ? 'ReCaptchaEnterpriseProvider' : 'ReCaptchaV3Provider';
+  return `${webProvider} (Web) + AppAttestProvider (iOS) verified`;
 });
 
 check('Hackathon Gates', 'MIT LICENSE file present', () => {

@@ -1,6 +1,7 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
   ReCaptchaV3Provider,
   type AppCheck,
 } from 'firebase/app-check';
@@ -80,21 +81,38 @@ export function getFirebaseRuntime(): FirebaseRuntime {
 
   const app = initializeApp(firebaseConfig);
 
-  // Firebase App Check (required for #BuildHybridAI; debug token supported)
+  // Firebase App Check (reCAPTCHA Enterprise score key in prod; debug token opt-in on localhost)
   let appCheck: AppCheck | null = null;
   let appCheckActive = false;
   try {
-    if (import.meta.env.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN === 'true') {
+    const isLocalhostUrlDebug =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1') &&
+      new URLSearchParams(window.location.search).get('appcheck') === 'debug';
+
+    if (
+      import.meta.env.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN === 'true' ||
+      isLocalhostUrlDebug
+    ) {
       (
         globalThis as unknown as {
           FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string;
         }
       ).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
     }
+
     const siteKey =
       import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY || 'debug-site-key';
+    const useEnterprise =
+      siteKey !== 'debug-site-key' &&
+      siteKey !== 'your_recaptcha_v3_site_key' &&
+      import.meta.env.VITE_FIREBASE_APP_CHECK_PROVIDER !== 'v3';
+
     appCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(siteKey),
+      provider: useEnterprise
+        ? new ReCaptchaEnterpriseProvider(siteKey)
+        : new ReCaptchaV3Provider(siteKey),
       isTokenAutoRefreshEnabled: true,
     });
     appCheckActive = true;

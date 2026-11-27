@@ -69,6 +69,19 @@ interface ManagedNodeMarker {
   lastLngLat: [number, number];
 }
 
+interface ManagedCalloutMarker {
+  marker: MapLibreMarker;
+  wrapperEl: HTMLDivElement;
+  callsignEl: HTMLSpanElement;
+  batteryWrapEl: HTMLSpanElement;
+  batteryTextEl: HTMLSpanElement;
+  radioEl: HTMLSpanElement;
+  pktsEl: HTMLSpanElement;
+  modeLabelEl: HTMLSpanElement;
+  lastStateKey: string;
+  lastLngLat: [number, number];
+}
+
 interface ActiveP2PLink {
   from: [number, number];
   to: [number, number];
@@ -201,6 +214,7 @@ function getNodeShortPlate(node: MeshNode): { shortName: string; subTag: string 
 function createGeofenceTooltipElement(): HTMLDivElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'flex flex-col items-center pointer-events-none select-none';
+  wrapper.style.zIndex = '5';
   wrapper.innerHTML = `
     <div style="
       background: rgba(20, 22, 25, 0.86);
@@ -227,6 +241,147 @@ function createGeofenceTooltipElement(): HTMLDivElement {
     <div style="width: 1px; height: 10px; background: linear-gradient(180deg, rgba(183,232,82,0.55), rgba(183,232,82,0.12));"></div>
   `;
   return wrapper;
+}
+
+function getNodeHybridStatusLabel(role: NodeRole): string {
+  if (role === 'RELAY_MULE') return 'WebRTC DataMule';
+  if (role === 'COMMAND_GATEWAY') return 'ONLY_IN_CLOUD Gemini';
+  return 'ONLY_ON_DEVICE Vault';
+}
+
+function createSelectedCalloutDOM(): Omit<
+  ManagedCalloutMarker,
+  'marker' | 'lastStateKey' | 'lastLngLat'
+> {
+  // Outer element owned by MapLibre (do NOT apply CSS transform on wrapperEl)
+  const wrapperEl = document.createElement('div');
+  wrapperEl.className = 'flex flex-col items-center pointer-events-none select-none';
+  wrapperEl.style.zIndex = '30';
+
+  const cardEl = document.createElement('div');
+  cardEl.className =
+    'bg-[#141619]/90 backdrop-blur-xl border border-white/12 rounded-xl px-3 py-2 shadow-[0_14px_34px_rgba(0,0,0,0.58)] min-w-[202px]';
+  cardEl.style.backdropFilter = 'blur(18px)';
+  (cardEl.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
+    'blur(18px)';
+
+  // Row 1: Callsign + Battery %
+  const topRowEl = document.createElement('div');
+  topRowEl.className = 'flex items-center justify-between gap-3';
+
+  const callsignEl = document.createElement('span');
+  callsignEl.className =
+    'text-[11.5px] font-semibold tracking-tight text-[#F3F4F6] whitespace-nowrap';
+
+  const batteryWrapEl = document.createElement('span');
+  batteryWrapEl.className =
+    'inline-flex items-center gap-1 text-[10.5px] font-medium tabular-nums shrink-0';
+  batteryWrapEl.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="2" y="7" width="17" height="10" rx="2.2" stroke="currentColor" stroke-width="1.9"/>
+      <path d="M21 10.5V13.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <rect x="4.5" y="9.5" width="10" height="5" rx="1" fill="currentColor" fill-opacity="0.75"/>
+    </svg>
+  `;
+
+  const batteryTextEl = document.createElement('span');
+  batteryWrapEl.appendChild(batteryTextEl);
+
+  topRowEl.appendChild(callsignEl);
+  topRowEl.appendChild(batteryWrapEl);
+
+  // Row 2: Radio status (0-Bar Mesh vs 1-Bar Cloud Uplink) + held packets (3 <305B pkts)
+  const midRowEl = document.createElement('div');
+  midRowEl.className =
+    'mt-1 flex items-center justify-between gap-2 text-[10.5px] leading-tight';
+
+  const radioEl = document.createElement('span');
+  radioEl.className = 'font-medium whitespace-nowrap';
+
+  const dotSepEl = document.createElement('span');
+  dotSepEl.className = 'text-white/25';
+  dotSepEl.textContent = '·';
+
+  const pktsEl = document.createElement('span');
+  pktsEl.className = 'font-medium text-[#D1D5DB] tabular-nums whitespace-nowrap';
+
+  midRowEl.appendChild(radioEl);
+  midRowEl.appendChild(dotSepEl);
+  midRowEl.appendChild(pktsEl);
+
+  // Row 3: Subtle #B7E852 status dot + hybrid role tag
+  const botRowEl = document.createElement('div');
+  botRowEl.className =
+    'mt-1.5 pt-1.5 border-t border-white/[0.08] flex items-center gap-1.5';
+
+  const statusDotEl = document.createElement('span');
+  statusDotEl.className =
+    'w-1.5 h-1.5 rounded-full bg-[#B7E852] shadow-[0_0_7px_rgba(183,232,82,0.75)] shrink-0';
+
+  const modeLabelEl = document.createElement('span');
+  modeLabelEl.className =
+    'text-[10px] font-medium tracking-[0.01em] text-[#D1D5DB] whitespace-nowrap';
+
+  botRowEl.appendChild(statusDotEl);
+  botRowEl.appendChild(modeLabelEl);
+
+  cardEl.appendChild(topRowEl);
+  cardEl.appendChild(midRowEl);
+  cardEl.appendChild(botRowEl);
+
+  // Crisp 6px hairline anchor stem right above the selected puck
+  const stemEl = document.createElement('div');
+  stemEl.style.width = '1px';
+  stemEl.style.height = '6px';
+  stemEl.style.background =
+    'linear-gradient(180deg, rgba(255,255,255,0.24), rgba(183,232,82,0.55))';
+
+  wrapperEl.appendChild(cardEl);
+  wrapperEl.appendChild(stemEl);
+
+  return {
+    wrapperEl,
+    callsignEl,
+    batteryWrapEl,
+    batteryTextEl,
+    radioEl,
+    pktsEl,
+    modeLabelEl,
+  };
+}
+
+function applySelectedCalloutState(
+  entry: ManagedCalloutMarker,
+  node: MeshNode
+): void {
+  const batteryRounded = Math.round(node.batteryPct);
+  const pktCount = node.beaconsHeld.length;
+  const stateKey = [
+    node.id,
+    node.callsign,
+    node.role,
+    batteryRounded,
+    node.online ? 1 : 0,
+    pktCount,
+  ].join('|');
+
+  if (entry.lastStateKey === stateKey) return;
+  entry.lastStateKey = stateKey;
+
+  entry.callsignEl.textContent = node.callsign;
+  entry.batteryTextEl.textContent = `${batteryRounded}%`;
+  entry.batteryWrapEl.style.color =
+    batteryRounded <= 30
+      ? '#F2B84B'
+      : batteryRounded >= 80
+      ? '#B7E852'
+      : '#D1D5DB';
+
+  entry.radioEl.textContent = node.online ? '1-Bar Cloud Uplink' : '0-Bar Mesh';
+  entry.radioEl.style.color = node.online ? '#B7E852' : '#9CA3AF';
+
+  entry.pktsEl.textContent = `${pktCount} <305B pkts`;
+  entry.modeLabelEl.textContent = getNodeHybridStatusLabel(node.role);
 }
 
 function createNodeMarkerDOM(
@@ -445,6 +600,12 @@ function applyMarkerVisualState(entry: ManagedNodeMarker, s: MarkerVisualState):
     entry.labelTagEl.style.color = s.online ? '#B7E852' : '#8A919E';
   }
 
+  entry.rootEl.style.zIndex = s.isSelected
+    ? '20'
+    : s.role === 'RELAY_MULE'
+    ? '12'
+    : '8';
+
   entry.labelWrapEl.style.borderColor = s.isSelected
     ? 'rgba(255, 255, 255, 0.28)'
     : 'rgba(255, 255, 255, 0.08)';
@@ -484,6 +645,8 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
   const mapRef = useRef<MapLibreMap | null>(null);
   const styleLoadedRef = useRef<boolean>(false);
   const markersRef = useRef<Map<string, ManagedNodeMarker>>(new Map());
+  const selectedCalloutRef = useRef<ManagedCalloutMarker | null>(null);
+  const prevSelectedNodeIdRef = useRef<string>(selectedNodeId);
   const draggingNodeIdRef = useRef<string | null>(null);
   const relayHeadingRef = useRef<number>(124);
   const activeLinksRef = useRef<ActiveP2PLink[]>([]);
@@ -539,6 +702,13 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
           marker.on('drag', () => {
             const pos = marker.getLngLat();
             const xy = lngLatToXy(pos.lng, pos.lat);
+            if (
+              selectedCalloutRef.current &&
+              latestPropsRef.current.selectedNodeId === node.id
+            ) {
+              selectedCalloutRef.current.marker.setLngLat([pos.lng, pos.lat]);
+              selectedCalloutRef.current.lastLngLat = [pos.lng, pos.lat];
+            }
             onMoveNodeRef.current(node.id, xy.x, xy.y);
           });
           marker.on('dragend', () => {
@@ -607,6 +777,36 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
       if (!seenIds.has(id)) {
         entry.marker.remove();
         markersRef.current.delete(id);
+      }
+    }
+
+    // Sync floating glass spatial callout above whichever selectedNodeId is active
+    const activeNode =
+      curNodes.find((n) => n.id === curSelectedId) ?? curNodes[0] ?? null;
+    const calloutEntry = selectedCalloutRef.current;
+    if (calloutEntry) {
+      if (!activeNode) {
+        calloutEntry.wrapperEl.style.display = 'none';
+      } else {
+        calloutEntry.wrapperEl.style.display = 'flex';
+        const activeMarkerEntry = markersRef.current.get(activeNode.id);
+        const targetLngLat: [number, number] =
+          draggingNodeIdRef.current === activeNode.id && activeMarkerEntry
+            ? [
+                activeMarkerEntry.marker.getLngLat().lng,
+                activeMarkerEntry.marker.getLngLat().lat,
+              ]
+            : xyToLngLat(activeNode.x, activeNode.y);
+
+        if (
+          calloutEntry.lastLngLat[0] !== targetLngLat[0] ||
+          calloutEntry.lastLngLat[1] !== targetLngLat[1]
+        ) {
+          calloutEntry.marker.setLngLat(targetLngLat);
+          calloutEntry.lastLngLat = targetLngLat;
+        }
+
+        applySelectedCalloutState(calloutEntry, activeNode);
       }
     }
 
@@ -799,6 +999,23 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
     })
       .setLngLat(GEOFENCE_CALLOUT_ANCHOR)
       .addTo(map);
+
+    // Floating glass spatial callout attached above whichever selectedNodeId is active
+    const calloutDom = createSelectedCalloutDOM();
+    const selectedCalloutMarker = new MapLibreMarker({
+      element: calloutDom.wrapperEl,
+      anchor: 'bottom',
+      offset: [0, -28],
+    })
+      .setLngLat(DEFAULT_CENTER)
+      .addTo(map);
+
+    selectedCalloutRef.current = {
+      ...calloutDom,
+      marker: selectedCalloutMarker,
+      lastStateKey: '',
+      lastLngLat: [DEFAULT_CENTER[0], DEFAULT_CENTER[1]],
+    };
 
     map.on('load', () => {
       // 1. Sector 4 Blackout Lime Geofence Polygon (#B7E852)
@@ -1126,6 +1343,8 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
       }
       resizeObserver.disconnect();
       geofenceTooltipMarker.remove();
+      selectedCalloutRef.current?.marker.remove();
+      selectedCalloutRef.current = null;
       for (const entry of markersRef.current.values()) {
         entry.marker.remove();
       }
@@ -1136,6 +1355,56 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Smooth cinematic camera ease whenever selectedNodeId changes (unless dragging a marker)
+  useEffect(() => {
+    if (prevSelectedNodeIdRef.current === selectedNodeId) return;
+    prevSelectedNodeIdRef.current = selectedNodeId;
+
+    const map = mapRef.current;
+    if (!map || draggingNodeIdRef.current !== null) return;
+
+    const targetNode = latestPropsRef.current.nodes.find(
+      (n) => n.id === selectedNodeId
+    );
+    if (!targetNode) return;
+
+    const [nodeLng, nodeLat] = xyToLngLat(targetNode.x, targetNode.y);
+    const containerWidth = mapContainerRef.current?.clientWidth ?? 1440;
+
+    // Subtle corridor blend keeps both the selected puck + spatial callout and the
+    // mesh corridor framed cleanly between the left (368px) and right (352px) glass panels
+    const blend = containerWidth < 1200 ? 0.82 : 0.66;
+    const framedCenter: [number, number] = [
+      Number(
+        (DEFAULT_CENTER[0] + (nodeLng - DEFAULT_CENTER[0]) * blend).toFixed(6)
+      ),
+      Number(
+        (DEFAULT_CENTER[1] + (nodeLat - DEFAULT_CENTER[1]) * blend).toFixed(6)
+      ),
+    ];
+
+    const corridorOffsetX =
+      containerWidth >= 1024
+        ? 8 // (368px left sidebar - 352px right sidebar) / 2
+        : containerWidth >= 720
+        ? Math.min(168, Math.round((368 - 16) / 2))
+        : 0;
+
+    map.easeTo({
+      center: framedCenter,
+      offset: [corridorOffsetX, 24],
+      zoom: 12.35,
+      pitch: selectedNodeId === 'node-alpha' ? 32 : 24,
+      bearing:
+        selectedNodeId === 'node-alpha'
+          ? -10
+          : selectedNodeId === 'node-cmd'
+          ? 8
+          : 0,
+      duration: 900,
+    });
+  }, [selectedNodeId]);
 
   // Sync markers & WebGL GeoJSON layers smoothly whenever state updates (including 60fps rAF patrol)
   useEffect(() => {
@@ -1153,6 +1422,7 @@ export const SwarmMapCanvas: React.FC<SwarmMapCanvasProps> = ({
   const handleRecenter = () => {
     mapRef.current?.easeTo({
       center: DEFAULT_CENTER,
+      offset: [0, 0],
       zoom: DEFAULT_ZOOM,
       pitch: DEFAULT_PITCH,
       bearing: 0,

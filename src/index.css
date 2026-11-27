@@ -62,6 +62,12 @@
   outline: none;
 }
 
+/* Hide floating reCAPTCHA corner widget so it never overlaps bottom-right frosted HUD dock
+   (compliant reCAPTCHA attribution text is included in ArchitectureModal / footer) */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+
 /* Subtle matte dark scrollbar inside floating glass cards */
 ::-webkit-scrollbar {
   width: 4px;
