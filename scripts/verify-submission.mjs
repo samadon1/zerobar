@@ -3,7 +3,7 @@
  * ZeroBar — #BuildHybridAI 2026 End-to-End Submission Verifier
  * Zero-dependency Node ESM script that validates hackathon pass/fail gates,
  * Firestore rules vs. client write parity, privacy invariants, repo hygiene,
- * and native iOS Swift syntax.
+ * native iOS Swift + Android Kotlin/AICore parity, and visual media proof.
  */
 
 import fs from 'node:fs';
@@ -240,6 +240,137 @@ check('iOS Build Gate', 'All 5 iOS Swift files pass swiftc -parse', () => {
   }
   runCmd('swiftc', ['-parse', ...swiftFiles]);
   return `${swiftFiles.length} Swift files parsed cleanly with 0 errors`;
+});
+
+// ---------------------------------------------------------------------------
+// 4. Native Android Kotlin + AICore + Play Integrity + Zero-PII Gate
+// ---------------------------------------------------------------------------
+check('Android Build Gate', 'Android Kotlin + AICore + Play Integrity + Zero-PII', () => {
+  const androidFiles = [
+    'android/README.md',
+    'android/ZeroBarField/settings.gradle.kts',
+    'android/ZeroBarField/build.gradle.kts',
+    'android/ZeroBarField/app/build.gradle.kts',
+    'android/ZeroBarField/app/src/main/AndroidManifest.xml',
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/MainActivity.kt',
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/models/MeshModels.kt',
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/services/HybridAIEngine.kt',
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/ui/FieldNodeScreen.kt',
+  ];
+  for (const f of androidFiles) {
+    const content = read(f);
+    assert(!/AIza[0-9A-Za-z_-]{35}/.test(content), `Hardcoded Google API key found in ${f}`);
+  }
+
+  const appGradle = read('android/ZeroBarField/app/build.gradle.kts');
+  for (const dep of [
+    'com.google.firebase:firebase-ai',
+    'com.google.firebase:firebase-ai-ondevice',
+    'com.google.firebase:firebase-appcheck-playintegrity',
+    'com.google.firebase:firebase-firestore',
+  ]) {
+    assert(appGradle.includes(dep), `app/build.gradle.kts missing dependency: ${dep}`);
+  }
+
+  const ktEngine = read(
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/services/HybridAIEngine.kt'
+  );
+  for (const tok of [
+    'GenerativeBackend.googleAI()',
+    'OnDeviceConfig(',
+    'InferenceMode.ONLY_ON_DEVICE',
+    'InferenceMode.PREFER_ON_DEVICE',
+    'response.inferenceSource',
+    'PlayIntegrityAppCheckProviderFactory',
+    'PersistentCacheSettings',
+  ]) {
+    assert(ktEngine.includes(tok), `HybridAIEngine.kt missing token: ${tok}`);
+  }
+  assert(
+    !/["']rawInputLocalOnly["']/.test(ktEngine),
+    'HybridAIEngine.kt must never serialize rawInputLocalOnly key'
+  );
+
+  const ktModels = read(
+    'android/ZeroBarField/app/src/main/java/app/zerobar/field/models/MeshModels.kt'
+  );
+  assert(
+    /@(?:get:)?Exclude\s+val\s+rawInputLocalOnly\b/.test(ktModels),
+    'MeshModels.kt must annotate rawInputLocalOnly with @get:Exclude'
+  );
+
+  const beaconClassIdx = ktModels.indexOf('data class TriageBeacon(');
+  assert(beaconClassIdx !== -1, 'TriageBeacon not found in MeshModels.kt');
+  const beaconSlice = ktModels.slice(beaconClassIdx);
+  const fnStart = beaconSlice.indexOf('fun toFirestoreMap');
+  assert(fnStart !== -1, 'TriageBeacon.toFirestoreMap() not found in MeshModels.kt');
+  const buildMapIdx = beaconSlice.indexOf('buildMap', fnStart);
+  const openBraceIdx = beaconSlice.indexOf('{', buildMapIdx !== -1 ? buildMapIdx : fnStart);
+  assert(openBraceIdx !== -1, 'TriageBeacon.toFirestoreMap() opening brace not found');
+  let depth = 0;
+  let closeBraceIdx = -1;
+  for (let i = openBraceIdx; i < beaconSlice.length; i++) {
+    if (beaconSlice[i] === '{') depth++;
+    else if (beaconSlice[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        closeBraceIdx = i;
+        break;
+      }
+    }
+  }
+  assert(closeBraceIdx > openBraceIdx, 'TriageBeacon.toFirestoreMap() closing brace not found');
+  const toMapBody = beaconSlice.slice(openBraceIdx + 1, closeBraceIdx);
+  assert(
+    !/rawInputLocalOnly/.test(toMapBody),
+    'TriageBeacon.toFirestoreMap() in MeshModels.kt must omit rawInputLocalOnly'
+  );
+
+  for (const field of [
+    'id',
+    'originNodeId',
+    'originCallsign',
+    'payload',
+    'beaconBytes',
+    'syncedToCloud',
+    'syncedAt',
+  ]) {
+    assert(
+      toMapBody.includes(`"${field}"`),
+      `MeshModels.kt TriageBeacon.toFirestoreMap() missing required field: ${field}`
+    );
+  }
+
+  return 'firebase-ai-ondevice + InferenceMode + PlayIntegrity + zero rawInputLocalOnly verified';
+});
+
+// ---------------------------------------------------------------------------
+// 5. Visual Media Hero Screenshots Gate
+// ---------------------------------------------------------------------------
+check('Visual Media Gate', 'Embedded hero screenshots exist in docs/media/', () => {
+  const mediaFiles = [
+    'docs/media/live-map.png',
+    'docs/media/pii-vault.png',
+    'docs/media/field-sos.png',
+  ];
+  const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const readmeMd = read('README.md');
+  const sizesKb = [];
+
+  for (const rel of mediaFiles) {
+    const full = path.join(ROOT, rel);
+    assert(fs.existsSync(full), `Missing hero screenshot: ${rel}`);
+    const buf = fs.readFileSync(full);
+    assert(buf.length > 10_240, `Screenshot unexpectedly small (<10KB): ${rel}`);
+    assert(
+      buf.subarray(0, 8).equals(pngMagic),
+      `File does not have a valid PNG header: ${rel}`
+    );
+    assert(readmeMd.includes(rel), `README.md does not embed ${rel}`);
+    sizesKb.push(`${path.basename(rel)} (${Math.round(buf.length / 1024)}KB)`);
+  }
+
+  return `Verified PNGs & README embeds: ${sizesKb.join(', ')}`;
 });
 
 // ---------------------------------------------------------------------------

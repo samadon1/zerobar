@@ -6,6 +6,7 @@ import {
   Lock,
   Radio,
   Smartphone,
+  Cpu,
   Globe,
   WifiOff,
 } from 'lucide-react';
@@ -49,7 +50,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl rounded-[24px] bg-[#141619]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_24px_70px_rgba(0,0,0,0.65)] overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-5xl rounded-[24px] bg-[#141619]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_24px_70px_rgba(0,0,0,0.65)] overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -184,7 +185,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 </div>
                 <p className="text-[12px] text-[#8A919E] mt-0.5 leading-relaxed">
                   <code className="text-[#D1D5DB]">rawInputLocalOnly</code> is never serialized to network or Firestore.{' '}
-                  <code className="text-[#D1D5DB]">rooms/&#123;roomId&#125;/beacons</code> enforces schema-validated, PII-free payloads gated by ReCaptchaV3 &amp; Apple App Attest.
+                  <code className="text-[#D1D5DB]">rooms/&#123;roomId&#125;/beacons</code> enforces schema-validated, PII-free payloads gated by ReCaptchaV3, App Attest &amp; Play Integrity.
                 </p>
               </div>
             </div>
@@ -195,38 +196,73 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
 
           {/* Multi-Platform Matrix */}
           <div>
-            <div className="text-[13px] font-medium text-[#D1D5DB] mb-2.5">
-              Multi-Platform Swarm Matrix
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-[#8A919E]">
+                MULTI-PLATFORM SWARM MATRIX
+              </div>
+              <span className="text-[11px] font-mono text-[#6B7280]">
+                4 Verified Runtime Surfaces
+              </span>
             </div>
-            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/[0.06]">
-              <div className="p-4 space-y-1.5">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
-                  <Globe className="w-4 h-4 text-[#B7E852]" />
-                  <span>Web Spatial Command</span>
+            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="p-4 flex flex-col justify-between gap-2.5 border-b border-white/[0.06] lg:border-b-0 sm:border-r">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
+                    <Globe className="w-4 h-4 text-[#B7E852] shrink-0" />
+                    <span>Web Command</span>
+                  </div>
+                  <p className="text-[12px] text-[#8A919E] leading-relaxed">
+                    React 19 + Chrome Gemini Nano + MapLibre GL + WebRTC P2P gossip.
+                  </p>
                 </div>
-                <p className="text-[12px] text-[#8A919E] leading-relaxed">
-                  React 19 + Chrome Built-in AI (<code className="text-[#D1D5DB]">LanguageModel</code>) + MapLibre coastal terrain + WebRTC P2P gossip.
-                </p>
+                <div className="pt-2 border-t border-white/[0.05] text-[10.5px] font-mono text-[#6B7280]">
+                  src/ · ReCaptchaV3
+                </div>
               </div>
 
-              <div className="p-4 space-y-1.5">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
-                  <Smartphone className="w-4 h-4 text-[#F2B84B]" />
-                  <span>Native iOS SwiftUI</span>
+              <div className="p-4 flex flex-col justify-between gap-2.5 border-b border-white/[0.06] lg:border-b-0 lg:border-r">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
+                    <Smartphone className="w-4 h-4 text-[#F2B84B] shrink-0" />
+                    <span>iOS SwiftUI</span>
+                  </div>
+                  <p className="text-[12px] text-[#8A919E] leading-relaxed">
+                    <code className="text-[#D1D5DB]">FirebaseAI</code> + Apple Foundation Models + App Attest.
+                  </p>
                 </div>
-                <p className="text-[12px] text-[#8A919E] leading-relaxed">
-                  iOS 18+/26 Field Node via <code className="text-[#D1D5DB]">FirebaseAI</code> Apple Foundation Models, <code className="text-[#D1D5DB]">AppAttest</code>, and offline Firestore cache.
-                </p>
+                <div className="pt-2 border-t border-white/[0.05] text-[10.5px] font-mono text-[#6B7280]">
+                  ios/ZeroBarField
+                </div>
               </div>
 
-              <div className="p-4 space-y-1.5">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
-                  <WifiOff className="w-4 h-4 text-[#E85D4A]" />
-                  <span>Offline Field PWA</span>
+              <div className="p-4 flex flex-col justify-between gap-2.5 border-b border-white/[0.06] sm:border-b-0 sm:border-r">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
+                    <Cpu className="w-4 h-4 text-[#38BDF8] shrink-0" />
+                    <span>Android Compose</span>
+                  </div>
+                  <p className="text-[12px] text-[#8A919E] leading-relaxed">
+                    <code className="text-[#D1D5DB]">firebase-ai-ondevice</code> + AICore Gemini Nano + Play Integrity.
+                  </p>
                 </div>
-                <p className="text-[12px] text-[#8A919E] leading-relaxed">
-                  Service Worker network-first shell boots cleanly in Airplane Mode; exchanges beacons over local WebRTC &amp; BroadcastChannel.
-                </p>
+                <div className="pt-2 border-t border-white/[0.05] text-[10.5px] font-mono text-[#6B7280]">
+                  android/ZeroBarField
+                </div>
+              </div>
+
+              <div className="p-4 flex flex-col justify-between gap-2.5">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#F3F4F6]">
+                    <WifiOff className="w-4 h-4 text-[#E85D4A] shrink-0" />
+                    <span>Offline PWA</span>
+                  </div>
+                  <p className="text-[12px] text-[#8A919E] leading-relaxed">
+                    Service Worker cached shell + Airplane Mode reload resilience.
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-white/[0.05] text-[10.5px] font-mono text-[#6B7280]">
+                  public/sw.js · 0-Bar
+                </div>
               </div>
             </div>
           </div>
